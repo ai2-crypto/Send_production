@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Bí mật và cơ sở dữ liệu
+.env
+.streamlit/secrets.toml
+*.db
+*.db-*
+
+# Dữ liệu sản lượng thật: chỉ dùng thử nghiệm cục bộ, không commit
+data/excel_samples/*
+!data/excel_samples/README.md
