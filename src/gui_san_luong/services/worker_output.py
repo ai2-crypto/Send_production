@@ -60,6 +60,23 @@ class CreditProblem:
     excel_row: int
     day: date
     reason: str
+    department: str = ""
+    # As written in the file, so a person without a code can still be found and fixed.
+    employee_name: str = ""
+    missing_code: bool = False
+
+
+@dataclass(frozen=True)
+class IncompleteIdentity:
+    """A person whose code or full name is missing, so their output cannot be sent reliably."""
+
+    employee_code: str | None
+    employee_name: str
+    departments: tuple[str, ...]
+    sources: tuple[str, ...]
+    excel_rows: int
+    missing_code: bool
+    missing_full_name: bool
 
 
 @dataclass(frozen=True)
@@ -228,6 +245,9 @@ def _credit_slot(
             row_number,
             day,
             f"{slot.role} {name}: thiếu hoặc sai mã số nhân viên",
+            department=template.department,
+            employee_name=name,
+            missing_code=True,
         )
     process_field = template.process_field
     return WorkerOutput(
@@ -367,12 +387,82 @@ def find_day_overlaps(
     }
 
 
+def is_full_name(name: str) -> bool:
+    """Nicknames used on the shop floor are one word; a Vietnamese full name has several."""
+    return len(normalize_header(name).split()) >= MIN_FULL_NAME_WORDS
+
+
+def find_incomplete_identities(
+    outputs: Iterable[WorkerOutput], problems: Iterable[CreditProblem]
+) -> list[IncompleteIdentity]:
+    """People across all files lacking a code, or whose files never give their full name.
+
+    A missing code comes first, as that output reaches nobody at all.
+    """
+    by_code: defaultdict[str, list[WorkerOutput]] = defaultdict(list)
+    for output in outputs:
+        by_code[output.employee_code].append(output)
+    found = [
+        IncompleteIdentity(
+            employee_code=code,
+            employee_name=name,
+            departments=tuple(sorted({o.department for o in rows})),
+            sources=tuple(sorted({o.source for o in rows})),
+            excel_rows=len(rows),
+            missing_code=False,
+            missing_full_name=True,
+        )
+        for code, rows in by_code.items()
+        if not is_full_name(name := _best_name(o.employee_name for o in rows))
+    ]
+
+    # Without a code, the written name in its department is all that tells people apart.
+    without_code: defaultdict[tuple[str, str], list[CreditProblem]] = defaultdict(list)
+    for problem in problems:
+        if problem.missing_code:
+            key = (problem.department, normalize_header(problem.employee_name))
+            without_code[key].append(problem)
+    found.extend(
+        IncompleteIdentity(
+            employee_code=None,
+            employee_name=name,
+            departments=(department,),
+            sources=tuple(sorted({p.source for p in rows})),
+            excel_rows=len(rows),
+            missing_code=True,
+            missing_full_name=not is_full_name(name),
+        )
+        for (department, _), rows in without_code.items()
+        for name in [_best_name(p.employee_name for p in rows)]
+    )
+    return sorted(
+        found,
+        key=lambda item: (
+            not item.missing_code,
+            item.departments,
+            normalize_header(item.employee_name),
+            item.employee_code or "",
+        ),
+    )
+
+
+def group_by_department(
+    employees: Iterable[EmployeeDay],
+) -> dict[str, list[EmployeeDay]]:
+    """Each department's people for a day; someone who moved appears under each department."""
+    groups: defaultdict[str, list[EmployeeDay]] = defaultdict(list)
+    for employee in employees:
+        for department in sorted({line.department for line in employee.lines}):
+            groups[department].append(employee)
+    return dict(sorted(groups.items()))
+
+
 def find_name_conflicts(outputs: Iterable[WorkerOutput]) -> dict[str, list[str]]:
     """Codes attached to different full names, which would merge two people's output."""
     full_names: defaultdict[str, dict[str, str]] = defaultdict(dict)
     for output in outputs:
-        normalized = normalize_header(output.employee_name)
-        if len(normalized.split()) >= MIN_FULL_NAME_WORDS:
+        if is_full_name(output.employee_name):
+            normalized = normalize_header(output.employee_name)
             full_names[output.employee_code][normalized] = output.employee_name
     return {
         code: sorted(names.values())

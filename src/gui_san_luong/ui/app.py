@@ -1,7 +1,9 @@
 """Upload production workbooks, one tab each, then review output per employee for a chosen day."""
 
 import hashlib
-from collections.abc import Callable, Hashable, Sequence
+import html
+from collections.abc import Callable, Hashable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Protocol
@@ -34,14 +36,17 @@ from gui_san_luong.services.worker_output import (
     CreditedOutput,
     CreditProblem,
     EmployeeDay,
+    IncompleteIdentity,
     WorkerOutput,
     available_days,
     build_messages,
     credit_workers,
     find_day_overlaps,
+    find_incomplete_identities,
     find_name_conflicts,
     format_line,
     format_quantity,
+    group_by_department,
     is_slot_mapped,
     summarize_day,
 )
@@ -58,6 +63,33 @@ RESULTS_KEY = "results"
 SEND_COLUMN = "Gửi"
 CODE_COLUMN = "Mã NV"
 ZALO_COLUMN = "Zalo"
+MESSAGE_LIST_HEIGHT = 600
+# Covers the whole page while a workbook is read, because a click during the read reruns
+# the script and starts the slow read over again.
+BUSY_OVERLAY = """
+<style>
+.busy-overlay {{
+  position: fixed; inset: 0; z-index: 1000000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.75); cursor: wait;
+}}
+.busy-box {{
+  display: flex; align-items: center; gap: 12px; padding: 16px 24px;
+  margin: 0 16px; max-width: 480px;
+  border-radius: 8px; background: #fff; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  font-size: 1rem; color: #31333f;
+}}
+.busy-spinner {{
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid #d0d0d6; border-top-color: #ff4b4b;
+  animation: busy-spin 0.8s linear infinite;
+}}
+@keyframes busy-spin {{ to {{ transform: rotate(360deg); }} }}
+</style>
+<div class="busy-overlay" role="alert" aria-busy="true">
+  <div class="busy-box"><div class="busy-spinner"></div><span>{message}</span></div>
+</div>
+"""
 
 
 class UploadedWorkbook(Protocol):
@@ -98,6 +130,28 @@ def _forget_removed_files(file_ids: set[str]) -> None:
             owner = key[0] if isinstance(key, tuple) else key
             if owner not in file_ids:
                 del cache[key]
+
+
+def _show_busy(notice: Any, message: str) -> None:
+    # File names come from the user's disk, so they are escaped before going into HTML.
+    notice.markdown(
+        BUSY_OVERLAY.format(
+            message=html.escape(
+                f"{message} Vui lòng chờ, không thao tác cho đến khi xong."
+            )
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+@contextmanager
+def _busy_area() -> Iterator[Any]:
+    """A placeholder for the loading overlay, always cleared so the page never stays locked."""
+    notice = st.empty()
+    try:
+        yield notice
+    finally:
+        notice.empty()
 
 
 def _sample_value(preview: SheetPreview, column: int, start_row: int) -> str:
@@ -305,7 +359,7 @@ def _render_file(file: UploadedWorkbook, notice: Any) -> FileOutcome:
     data = file.getvalue()
 
     def load() -> list[SheetPreview]:
-        notice.info(f"Đang đọc danh sách sheet của {file.name}...")
+        _show_busy(notice, f"Đang đọc danh sách sheet của {file.name}...")
         return read_previews(data)
 
     try:
@@ -380,7 +434,7 @@ def _render_file(file: UploadedWorkbook, notice: Any) -> FileOutcome:
     )
 
     def read() -> ImportResult:
-        notice.info(f"Đang đọc dữ liệu {file.name}...")
+        _show_busy(notice, f"Đang đọc dữ liệu {file.name}...")
         return read_rows(data, preview.name, template, mapping, start_row, extras)
 
     try:
@@ -517,6 +571,72 @@ def _employee_table(
     ]
 
 
+def _show_messages(employee: EmployeeDay) -> None:
+    messages = build_messages(employee)
+    if len(messages) > 1:
+        st.caption(f"Nội dung dài nên sẽ chia thành {len(messages)} tin.")
+    for message in messages:
+        st.text(message)
+
+
+def _show_department_messages(selected: list[EmployeeDay], day: date) -> None:
+    groups = group_by_department(selected)
+    department = st.selectbox(
+        "Bộ phận",
+        list(groups),
+        format_func=lambda name: f"{name} ({len(groups[name]):,} người)",
+        key=f"department_preview:{day.isoformat()}",
+    )
+    if department is None:
+        return
+    st.caption(
+        "Danh sách tin sẽ gửi cho nhân viên đang chọn của bộ phận này. Người làm nhiều bộ "
+        "phận trong ngày nhận một tin gồm sản lượng của mọi bộ phận, nên có mặt ở mỗi bộ phận đó."
+    )
+    with st.container(height=MESSAGE_LIST_HEIGHT):
+        for employee in groups[department]:
+            with st.container(border=True):
+                st.text(f"Gửi cho {employee.employee_code} — {employee.employee_name}")
+                _show_messages(employee)
+
+
+def _show_incomplete_identities(people: list[IncompleteIdentity]) -> None:
+    if not people:
+        return
+    without_code = sum(person.missing_code for person in people)
+    with st.expander(
+        f"{len(people):,} người chưa có đủ họ tên hoặc mã số",
+        expanded=bool(without_code),
+    ):
+        st.caption(
+            "Tính trên mọi file và mọi ngày. Người thiếu mã số không nhận được sản lượng; "
+            "người chỉ có tên gọi tắt vẫn nhận được nhưng khó kiểm tra đúng người. "
+            "Hãy bổ sung trong file Excel rồi tải lại."
+        )
+        st.dataframe(
+            [
+                {
+                    CODE_COLUMN: person.employee_code or "",
+                    "Tên trong file": person.employee_name,
+                    "Thiếu": " và ".join(
+                        part
+                        for part, missing in (
+                            ("mã số", person.missing_code),
+                            ("họ tên đầy đủ", person.missing_full_name),
+                        )
+                        if missing
+                    ),
+                    "Bộ phận": ", ".join(person.departments),
+                    "File": ", ".join(person.sources),
+                    "Số dòng": person.excel_rows,
+                }
+                for person in people
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+
 def _show_employees(
     employees: list[EmployeeDay], day: date, linked_codes: set[str]
 ) -> None:
@@ -553,17 +673,19 @@ def _show_employees(
     )
 
     if selected:
-        employee = st.selectbox(
-            "Xem trước nội dung của",
-            selected,
-            format_func=lambda e: f"{e.employee_code} — {e.employee_name}",
-            key=f"message_preview:{day.isoformat()}",
+        by_person, by_department = st.tabs(
+            ["Xem trước theo nhân viên", "Xem trước theo bộ phận"]
         )
-        messages = build_messages(employee)
-        if len(messages) > 1:
-            st.caption(f"Nội dung dài nên sẽ chia thành {len(messages)} tin.")
-        for message in messages:
-            st.text(message)
+        with by_person:
+            employee = st.selectbox(
+                "Xem trước nội dung của",
+                selected,
+                format_func=lambda e: f"{e.employee_code} — {e.employee_name}",
+                key=f"message_preview:{day.isoformat()}",
+            )
+            _show_messages(employee)
+        with by_department:
+            _show_department_messages(selected, day)
 
     st.button(
         f"Gửi Zalo cho {len(selected):,} nhân viên",
@@ -624,6 +746,7 @@ def _render_summary(outcomes: list[FileOutcome]) -> list[WorkerOutput]:
         if outcome.credited
         for problem in outcome.credited.problems
     ]
+    _show_incomplete_identities(find_incomplete_identities(outputs, problems))
     days = available_days(outputs)
     if not days:
         for outcome in outcomes:
@@ -670,12 +793,12 @@ def _render_production() -> list[WorkerOutput]:
     if not files:
         return []
 
-    notice = st.empty()
     outcomes = []
-    for tab, file in zip(st.tabs([file.name for file in files]), files, strict=True):
-        with tab:
-            outcomes.append(_render_file(file, notice))
-    notice.empty()
+    with _busy_area() as notice:
+        tabs = st.tabs([file.name for file in files])
+        for tab, file in zip(tabs, files, strict=True):
+            with tab:
+                outcomes.append(_render_file(file, notice))
     return _render_summary(outcomes)
 
 

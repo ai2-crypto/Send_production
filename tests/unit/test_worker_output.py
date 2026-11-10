@@ -38,8 +38,11 @@ from gui_san_luong.services.worker_output import (
     build_messages,
     credit_workers,
     find_day_overlaps,
+    find_incomplete_identities,
     find_name_conflicts,
     format_quantity,
+    group_by_department,
+    is_full_name,
     is_slot_mapped,
     list_employees,
     normalize_code,
@@ -717,3 +720,74 @@ def test_template_only_refers_to_fields_it_declares(template: ReportTemplate) ->
         referenced |= {slot.code_field, slot.quantity_field, *slot.name_fields}
         referenced |= {key for key in (slot.role_field, slot.ratio_field) if key}
     assert referenced <= declared
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Trần Văn An", True),
+        ("Lê Bình", True),
+        ("an", False),
+        ("  AN  ", False),
+        ("", False),
+    ],
+)
+def test_is_full_name(name: str, expected: bool) -> None:
+    assert is_full_name(name) is expected
+
+
+def test_incomplete_lists_missing_code_and_nickname_only_people() -> None:
+    credited = _credit(
+        _row(
+            code_1=10,
+            share_1=60.0,
+            full_1="Trần Văn An",
+            code_2=20,
+            share_2=40.0,
+            nick_2="bo",
+        ),
+        _row(code_1=None, share_1=50.0, nick_1="cuong"),
+        _row(_row=8, code_1=None, share_1=30.0, nick_1="Cuong"),
+        _row(_row=9, code_1=None, share_1=30.0, full_1="Phạm Văn Dũng"),
+    )
+    found = find_incomplete_identities(credited.outputs, credited.problems)
+    assert [
+        (p.employee_code, p.missing_code, p.missing_full_name, p.excel_rows)
+        for p in found
+    ] == [
+        (None, True, True, 2),
+        (None, True, False, 1),
+        ("20", False, True, 1),
+    ]
+    assert found[0].departments == ("Bộ phận A",)
+    assert found[0].sources == ("a.xlsx",)
+
+
+def test_full_name_from_another_file_completes_a_nickname() -> None:
+    outputs = [
+        _output(code="10", name="an", source="o.xlsx"),
+        _output(code="10", name="Trần Văn An", source="may.xlsx"),
+    ]
+    assert find_incomplete_identities(outputs, []) == []
+
+
+def test_other_problems_are_not_listed_as_missing_code() -> None:
+    credited = _credit(_row(code_1=10, share_1=None, nick_1="an"))
+    assert credited.problems
+    assert find_incomplete_identities([], credited.problems) == []
+
+
+def test_group_by_department_lists_a_moved_person_under_each_department() -> None:
+    outputs = [
+        _output(code="10", name="Trần Văn An", department="Dệt"),
+        _output(code="10", name="Trần Văn An", department="May", unit="cái"),
+        _output(code="20", name="Lê Bình", department="May", unit="cái"),
+    ]
+    groups = group_by_department(summarize_day(outputs, DAY_1))
+    assert {
+        name: [e.employee_code for e in people] for name, people in groups.items()
+    } == {
+        "Dệt": ["10"],
+        "May": ["10", "20"],
+    }
+    assert list(groups) == ["Dệt", "May"]
