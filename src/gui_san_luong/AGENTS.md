@@ -291,7 +291,7 @@ ruff check . && ruff format --check . && mypy src && pytest
 Trang tổng hợp sản lượng theo nhân viên (chưa có đăng nhập nên chỉ chạy trên máy cục bộ, không mở ra mạng):
 
 ```bash
-uv run streamlit run src/gui_san_luong/ui/app.py --server.address 127.0.0.1
+uv run python -m streamlit run src/gui_san_luong/ui/app.py --server.address 127.0.0.1
 ```
 
 ### Bắt buộc kiểm thử

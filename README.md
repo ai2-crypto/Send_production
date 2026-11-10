@@ -5,7 +5,7 @@
 ## Tổng hợp sản lượng theo nhân viên
 
 ```bash
-uv run streamlit run src/gui_san_luong/ui/app.py --server.address 127.0.0.1
+uv run python -m streamlit run src/gui_san_luong/ui/app.py --server.address 127.0.0.1
 ```
 
 Tải nhiều file Excel, mỗi file có một tab để chọn sheet và cột. Cuối trang chọn ngày để xem sản lượng từng nhân viên trên mọi file, gộp theo mã số nên người đổi công đoạn trong tháng vẫn là một dòng. Chưa kết nối Zalo nên chưa gửi được.

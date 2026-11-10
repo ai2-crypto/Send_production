@@ -6,6 +6,8 @@
       "runtimeExecutable": "uv",
       "runtimeArgs": [
         "run",
+        "python",
+        "-m",
         "streamlit",
         "run",
         "src/gui_san_luong/ui/app.py",
