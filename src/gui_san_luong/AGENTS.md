@@ -99,7 +99,7 @@ Thêm thư viện mới phải có lý do rõ ràng và ghim phiên bản.
 | Cấp quyền | Tạo đường dẫn tại Zalo for Developers với callback URL và `code_challenge`, gửi cho admin OA. Callback nhận `?code=...&oa_id=...` |
 | PKCE | `code_verifier` khác nhau cho mỗi lần, 43 ký tự, đủ chữ hoa, chữ thường, số. `code_challenge = Base64-không-padding(SHA-256(verifier))`. Dùng `state` để ghép code với verifier và chống CSRF |
 | Đổi token | `POST https://oauth.zaloapp.com/v4/oa/access_token`, dạng `x-www-form-urlencoded`, header `secret_key`, body `code`, `app_id`, `grant_type=authorization_code`, `code_verifier` |
-| Làm mới | Cùng URL và header, body `refresh_token`, `app_id`, `grant_type=refresh_token` |
+| Làm mới | Cùng URL và header, body `refresh_token`, `app_id`, `grant_type=refresh_token`. Thành công trả `access_token`, `refresh_token`, `expires_in` (chuỗi số giây, ví dụ `"90000"`). Tài liệu không mô tả dạng phản hồi lỗi, nên mọi phản hồi thiếu token đều coi là bị từ chối (đối chiếu tài liệu 2026-11-19) |
 
 | Loại mã | Hiệu lực | Lưu ý |
 | --- | --- | --- |
@@ -109,7 +109,7 @@ Thêm thư viện mới phải có lý do rõ ràng và ghim phiên bản.
 
 **Quy tắc bắt buộc về token:**
 
-1. Chỉ `worker` được làm mới token, để tránh hai tiến trình dùng cùng một refresh token.
+1. Chỉ một nơi làm mới token tại một thời điểm, để không bao giờ hai bên dùng cùng một refresh token. Dự án chưa có `worker`, nên ứng dụng tự làm mới ngay trong tiến trình `ui` khi access token còn dưới 1 giờ, với khóa (lease) trong DB lấy bằng một câu `UPDATE` để mọi lượt khác chờ rồi đọc cặp token mới (người dùng chọn 2026-11-19; xem `services/zalo_token.py`). Khi có `worker`, chuyển việc làm mới sang đó.
 2. Lưu cặp token mới trong một giao dịch ngay khi nhận phản hồi, trước mọi xử lý khác. Mất refresh token mới đồng nghĩa admin OA phải cấp quyền lại.
 3. Làm mới chủ động trước khi hết hạn ít nhất 1 giờ; không đợi đến khi gặp lỗi.
 4. Tiến trình khác đọc token từ DB ở mỗi lần gọi, không giữ trong bộ nhớ lâu.
@@ -125,6 +125,8 @@ Thêm thư viện mới phải có lý do rõ ràng và ghim phiên bản.
 | Chi tiết người dùng | `GET /v3.0/oa/user/detail` | Quản lý thông tin người dùng | Gọi cho từng ID |
 | Tin nhắn gần nhất | `GET /v2.0/oa/listrecentchat` | Quản lý tin nhắn người dùng | `count` ≤ 10 |
 | Tin nhắn trong hội thoại | `GET /v2.0/oa/conversation` | Quản lý tin nhắn người dùng | `count` ≤ 10, phân trang bằng `offset` |
+| Tải ảnh lên | `POST /v2.0/oa/upload/image` (multipart, trường `file`) | Gửi tin và thông báo | JPG/PNG ≤ 1 MB; **5.000 lượt/tháng**; ảnh chỉ lưu 7 ngày; trả về `attachment_id` |
+| Gửi tin Tư vấn kèm ảnh | `POST /v3.0/oa/message/cs`, `attachment.payload.template_type = media` | Gửi tin và thông báo | `text` là chú thích, tối đa 2.000 ký tự; 1 ảnh mỗi tin |
 
 Ví dụ gửi tin:
 
@@ -208,7 +210,7 @@ Các bảng chính (cột của `production_reports` cần chốt theo mục 8):
 
 | Bảng | Cột quan trọng |
 | --- | --- |
-| `oauth_tokens` | `oa_id` PK, `access_token_enc`, `refresh_token_enc`, `access_expires_at`, `refresh_expires_at` |
+| `oauth_tokens` | `name` PK (một dòng `'oa'`, vì chỉ dùng một OA), `access_token_enc`, `refresh_token_enc`, `access_expires_at`, `refresh_expires_at`, `refresh_lease_until`, `last_error`, `needs_reauthorization` |
 | `oauth_states` | `state` PK, `code_verifier_enc`, `expires_at` |
 | `employee_zalo_links` | `employee_code` PK, `employee_name`, `zalo_user_id` duy nhất, `updated_by`, `updated_at`. Nối mã nhân viên với Zalo; chưa phải quyền nhận số liệu, quyền đó vẫn là `is_allowed` |
 | `recipients` | `zalo_user_id` PK, `display_name`, `is_follower`, `last_interaction_at`, `is_allowed`, `group_name` |
@@ -236,6 +238,7 @@ pending → sending → sent
 
 - `ZALO_APP_ID`, `ZALO_SECRET_KEY`, `ZALO_OA_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY` chỉ nằm trong biến môi trường hoặc trình quản lý bí mật. Không commit, không viết vào mã nguồn, tài liệu hay test.
 - Mã hóa token và `code_verifier` bằng Fernet trước khi lưu DB.
+- Chưa có luồng OAuth (cần tên miền HTTPS công khai). Thay vào đó người vận hành dán access token và refresh token lấy từ API Explorer một lần ở tab “Tin nhắn Zalo (thử)”; ứng dụng lưu mã hóa vào `oauth_tokens` và tự làm mới (tài liệu Zalo cho phép dùng refresh token của API Explorer để bắt đầu vòng lặp làm mới; người dùng chọn 2026-11-19). Refresh token không để trong `.env`, vì mỗi lần làm mới nó đổi và ứng dụng không ghi được `.env`. `ZALO_OA_ACCESS_TOKEN` trong `.env` chỉ còn là dự phòng khi chưa lưu token nào; token dán tạm trên trang chỉ sống trong phiên trình duyệt và được ưu tiên hơn cả.
 - Không ghi ra log, giao diện hay thông báo lỗi: token, secret, `code`, `code_verifier`, header `access_token`, toàn bộ request. Dùng bộ lọc log để che các trường này, và tắt log URL/headers ở mức DEBUG của `httpx`.
 - Phân quyền file DB và `.env` chỉ cho tài khoản chạy dịch vụ.
 
@@ -338,10 +341,13 @@ uv run python -m streamlit run src/gui_san_luong/ui/app.py --server.address 127.
 - [x] Dệt: một máy nhiều người thì chia theo cột `hệ số chia lương`: sản lượng mỗi người = `Thực hiện` × hệ số, tổng các phần bằng số mét của file (người dùng xác nhận 2026-11-06, thay cho cách ghi đủ số mét cho mỗi người).
 - [ ] In: tạm để trống đơn vị của `IN_CAI` và `IN_CUON`, người dùng sẽ bổ sung sau.
 - [x] Sản lượng gửi cho nhân viên là phần chia theo hệ số. In, Cắt, Sợi, May, Jumbo, Ó đã có cột phần chia trong file, bằng đúng số lượng × hệ số nên đọc trực tiếp; Dệt không có cột này nên tự tính.
-- [x] Nội dung tin: tổng theo công đoạn, rồi từng dòng ca, máy, mã hàng (May và Jumbo có thêm công đoạn, vì một tên công đoạn lặp ở nhiều mã thành phẩm), số lượng, sản lượng chính của dòng, hệ số (tính bằng phần của người đó chia sản lượng chính) và đánh dấu tăng ca; mã hàng theo cách phiếu lương đang ghi (người dùng yêu cầu 2026-11-06).
+- [x] Nội dung tin: tổng theo công đoạn, rồi từng dòng ca, máy, mã hàng (May và Jumbo có thêm công đoạn, vì một tên công đoạn lặp ở nhiều mã thành phẩm), số lượng, sản lượng tổng của dòng, hệ số (tính bằng phần của người đó chia sản lượng tổng) và đánh dấu tăng ca; mã hàng theo cách phiếu lương đang ghi (người dùng yêu cầu 2026-11-06). Gọi là “SL tổng”, không gọi “SL chính” (người dùng yêu cầu 2026-11-12).
+- [x] Jumbo: file tách `SẢN LƯỢNG` (giờ thường) và `SẢN LƯỢNG tăng ca`, cộng lại bằng `TỔNG SP`. Tin ghi phần của người đó tách thành giờ thường + tăng ca theo đúng tỷ lệ của dòng, ví dụ `700 cái = 550 + 150 tăng ca` (người dùng yêu cầu 2026-11-12).
+- [x] Bố cục tin (phương án B, người dùng chọn 2026-11-12): đầu tin ghi `TỔNG` theo từng đơn vị và tách giờ thường · tăng ca; mỗi dòng Excel là một khối đánh số `1)`, `2)`… gồm mã hàng, công đoạn và một dòng phép tính `1.000 (SL tổng) x 1 (hệ số) = 1.000 (SL thực nhận)`; dòng có tăng ca ghi `[650 + 350 (tăng ca)] x 1 (hệ số) = 1.000 (SL thực nhận)`, dòng chỉ đánh dấu tăng ca mà không có số tăng ca ghi `(SL tổng, tăng ca)` (người dùng yêu cầu 2026-11-12); tin không có dòng trống nào, kể cả giữa các khối đánh số; các dòng sau dòng đánh số của mỗi khối thụt vào 3 khoảng trắng (người dùng yêu cầu 2026-11-12); các khối không bị cắt giữa hai tin.
 - [x] Dệt: vai trò lấy theo cột file ghi người đó (`thợ chính`/`thợ phụ`) từng dòng, không theo chức danh ở sheet `DS CN`. Người thường làm thợ phụ vẫn có thể đứng thợ chính với hệ số 1 ở một số ngày; file ghi vậy là đúng (người dùng xác nhận 2026-11-06).
 - [x] Phần ghi mã `cty` là của công ty, không gửi cho ai nhưng vẫn tính trong tổng của file. Người công nhân được điền cùng dòng vẫn nhận phần của mình như thường (người dùng xác nhận 2026-11-06).
 - [x] Mỗi dòng Excel là một dòng trong tin, không gộp các dòng giống nhau, để đối chiếu được với file (người dùng yêu cầu 2026-11-06).
+- [x] Tin Tư vấn văn bản không có in đậm hay màu. Bước 4 có hai nút (người dùng yêu cầu 2026-11-18): **gửi dạng chữ** theo bố cục phương án B có thêm emoji đánh dấu ca, máy, mã hàng, sản lượng; **gửi dạng ảnh màu** mỗi 10 dòng một ảnh, kèm chú thích ghi tổng. Hai dạng được theo dõi riêng, nên đã gửi chữ vẫn gửi được ảnh.
 - [x] Dòng không có công nhân (không tên, không mã) thì bỏ qua, không báo lỗi; dòng có tên mà thiếu mã vẫn phải báo (người dùng xác nhận 2026-11-06).
 - [ ] Danh sách nối mã nhân viên với Zalo user id: chưa có, sẽ nhập ở tab “Nối Zalo” khi có.
 - [ ] Sợi: sơ đồ ghi sheet `NHAP LIEU` và các cột B, R, X, W nhưng file không khớp; cần chốt cột ngày, tên công nhân, số lượng, đơn vị.

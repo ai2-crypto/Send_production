@@ -62,6 +62,8 @@ class DetailFields(BaseModel):
     # Joined, because some reports split day/night and shift into two columns.
     shift_fields: tuple[str, ...] = ()
     overtime_field: str | None = None
+    # The part of the row's output made in overtime, when the report states it apart.
+    overtime_quantity_field: str | None = None
 
 
 class ReportTemplate(BaseModel):
@@ -357,7 +359,7 @@ CUTTING = ReportTemplate(
             role="NV01",
             code_field="code_1",
             quantity_field="share_1",
-            name_fields=("worker_1",),
+            name_fields=("name_1", "worker_1"),
         ),
         WorkerSlot(
             role="NV02",
@@ -415,6 +417,10 @@ CUTTING = ReportTemplate(
         _anchored("code_2", "Mã số NV02", FieldKind.CODE, "ten cn nv01", 4),
         _anchored("share_1", "SP NV01", FieldKind.NUMBER, "s luong don vi cai"),
         _anchored("share_2", "SP NV02", FieldKind.NUMBER, "s luong don vi cai", 1),
+        # The unheaded column after the shares looks NV01's full name up from "Mã số 01".
+        # Read as a code so a failed lookup (#N/A) falls back to the nickname instead of
+        # rejecting the row, the same as a broken code.
+        _anchored("name_1", "Họ tên NV01", FieldKind.CODE, "s luong don vi cai", 2),
     ),
 )
 
@@ -538,6 +544,9 @@ def _sewing_template(
             machine_fields=tuple(f.key for f in extra_fields if f.key == "machine"),
             shift_fields=tuple(f.key for f in extra_fields if f.key == "shift"),
             overtime_field="overtime",
+            overtime_quantity_field=next(
+                (f.key for f in extra_fields if f.key == "overtime_output"), None
+            ),
         ),
         worker_slots=(
             WorkerSlot(
@@ -634,6 +643,15 @@ JUMBO_SEWING = _sewing_template(
     ("jumbo",),
     (),
     _code("item", "Mã thành phẩm", "ma thanh pham"),
+    (
+        # "TỔNG SP" is this plus the regular-hours column beside it.
+        FieldSpec(
+            key="overtime_output",
+            label="Sản lượng tăng ca",
+            kind=FieldKind.NUMBER,
+            aliases=("san luong tang ca",),
+        ),
+    ),
 )
 
 BLOWING = ReportTemplate(

@@ -1,0 +1,34 @@
+# Những gì KHÔNG đẩy lên NAS. scripts/prepare_nas.ps1 đọc file này rồi chép phần còn lại
+# vào deploy/gui-san-luong để tải lên bằng FileZilla.
+# Dòng kết thúc bằng "/" là thư mục, dòng khác là tên file (được dùng * và ?).
+# So khớp theo tên ở mọi cấp thư mục, không theo đường dẫn.
+
+# Môi trường ảo và bộ nhớ đệm: image tự cài thư viện khi build
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+
+# Git và chính thư mục xuất
+.git/
+deploy/
+scripts/
+.gitignore
+.nasignore
+
+# File dành cho AI
+.claude/
+AGENTS.md
+CLAUDE.md
+
+# Test và dữ liệu thật (file Excel, DB) không cần để chạy
+tests/
+data/
+*.db
+*.db-*
+
+# Bí mật: tạo .env trực tiếp trên NAS một lần, để lần đẩy sau không ghi đè token trên NAS
+.env
+secrets.toml

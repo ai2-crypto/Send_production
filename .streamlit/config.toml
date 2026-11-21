@@ -1,0 +1,3 @@
+# Operators only need the app itself, not Streamlit's developer menu or the Deploy button.
+[client]
+toolbarMode = "minimal"

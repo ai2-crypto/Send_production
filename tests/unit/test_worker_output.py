@@ -9,6 +9,7 @@ from openpyxl import Workbook
 
 from gui_san_luong.domain.production_templates import (
     BLOWING,
+    CUTTING,
     JUMBO_SEWING,
     SEWING,
     SPINNING,
@@ -32,6 +33,7 @@ from gui_san_luong.services.excel_import import (
 from gui_san_luong.services.worker_output import (
     MAX_MESSAGE_CHARS,
     CreditedOutput,
+    NameVariant,
     OutputDetail,
     WorkerOutput,
     available_days,
@@ -411,10 +413,16 @@ def test_name_conflict_compares_full_names_and_ignores_nicknames() -> None:
         _output(code="10", name="an"),
         _output(code="10", name="Trần Văn An"),
         _output(code="10", name="TRẦN VĂN AN"),
-        _output(code="20", name="Lê Thị Bình"),
-        _output(code="20", name="Lê Thị Hoa"),
+        _output(code="20", name="Lê Thị Bình", source="det.xlsx"),
+        _output(code="20", name="Lê Thị Bình", source="in.xlsx", department="In"),
+        _output(code="20", name="Lê Thị Hoa", source="may.xlsx", department="May"),
     ]
-    assert find_name_conflicts(outputs) == {"20": ["Lê Thị Bình", "Lê Thị Hoa"]}
+    assert find_name_conflicts(outputs) == {
+        "20": [
+            NameVariant("Lê Thị Bình", ("det.xlsx", "in.xlsx"), ("Dệt", "In")),
+            NameVariant("Lê Thị Hoa", ("may.xlsx",), ("May",)),
+        ]
+    }
 
 
 @pytest.mark.parametrize(
@@ -446,11 +454,14 @@ def test_message_lists_each_item_machine_and_shift_under_a_total() -> None:
     )[0]
     expected = (
         "Sản lượng ngày 01/01/2030\n"
-        "Trần Văn An (MS 10)\n"
-        "\n"
-        "Dệt (Thợ chính): 1.234,5 mét\n"
-        "- Ca A1, máy 102, H2: 234,5 mét (SL chính 469, hệ số 0,5), tăng ca\n"
-        "- Ca B1, máy 103, H1: 1.000 mét (SL chính 1.000, hệ số 1)"
+        "Trần Văn An – MS 10\n"
+        "TỔNG: 1.234,5 mét\n"
+        "──────────\n"
+        "Dệt – Thợ chính: 1.234,5 mét\n"
+        "1) Ca A1, máy 102, H2\n"
+        "   469 (SL tổng, tăng ca) x 0,5 (hệ số) = 234,5 (SL thực nhận)\n"
+        "2) Ca B1, máy 103, H1\n"
+        "   1.000 (SL tổng) x 1 (hệ số) = 1.000 (SL thực nhận)"
     )
     assert build_messages(employee) == [expected]
 
@@ -468,15 +479,19 @@ def test_each_excel_row_stays_its_own_line_even_when_it_looks_identical() -> Non
     assert line.quantity == 308.0
     assert [item.quantity for item in line.details] == [259.0, 49.0]
     assert build_messages(employee)[0].endswith(
-        "Dệt (Thợ chính): 308 mét\n"
-        "- Ca B1, máy 103, H1: 259 mét (SL chính 259, hệ số 1)\n"
-        "- Ca B1, máy 103, H1: 49 mét (SL chính 49, hệ số 1)"
+        "Dệt – Thợ chính: 308 mét\n"
+        "1) Ca B1, máy 103, H1\n"
+        "   259 (SL tổng) x 1 (hệ số) = 259 (SL thực nhận)\n"
+        "2) Ca B1, máy 103, H1\n"
+        "   49 (SL tổng) x 1 (hệ số) = 49 (SL thực nhận)"
     )
 
 
 def test_coefficient_is_rounded_for_display_only() -> None:
     employee = summarize_day([_output(quantity=1.0, base=3.0)], DAY_1)[0]
-    assert build_messages(employee)[0].endswith("1 mét (SL chính 3, hệ số 0,333)")
+    assert build_messages(employee)[0].endswith(
+        "3 (SL tổng) x 0,333 (hệ số) = 1 (SL thực nhận)"
+    )
 
 
 def test_credit_keeps_the_rows_output_next_to_the_persons_share() -> None:
@@ -509,8 +524,8 @@ def test_same_step_on_different_products_stays_on_separate_lines() -> None:
         DAY_1,
     )[0]
     message = build_messages(employee)[0]
-    assert "- JBO-1, May quai: 30 mét" in message
-    assert "- JBO-2, May quai: 40 mét" in message
+    assert "1) JBO-1\n   May quai\n   30 (SL tổng)" in message
+    assert "2) JBO-2\n   May quai\n   40 (SL tổng)" in message
 
 
 def test_overtime_is_kept_apart_from_regular_hours() -> None:
@@ -525,10 +540,99 @@ def test_overtime_is_kept_apart_from_regular_hours() -> None:
     assert employee.lines[0].quantity == 15.0
 
 
+def test_stated_overtime_splits_the_share_instead_of_only_flagging_it() -> None:
+    detail = OutputDetail(
+        "JBO-1", step="May viền", overtime=True, overtime_quantity=150
+    )
+    employee = summarize_day(
+        [_output(unit="cái", quantity=700.0, detail=detail)], DAY_1
+    )[0]
+    assert build_messages(employee)[0].endswith(
+        "TỔNG: 700 cái\n"
+        "Giờ thường 550 · Tăng ca 150\n"
+        "──────────\n"
+        "Dệt – Thợ chính: 700 cái\n"
+        "1) JBO-1\n"
+        "   May viền\n"
+        "   [550 + 150 (tăng ca)] x 1 (hệ số) = 700 (SL thực nhận)"
+    )
+
+
+def test_overtime_split_follows_the_persons_coefficient() -> None:
+    detail = OutputDetail("JBO-1", overtime_quantity=200)
+    employee = summarize_day(
+        [_output(unit="cái", quantity=500.0, base=1000.0, detail=detail)], DAY_1
+    )[0]
+    assert build_messages(employee)[0].endswith(
+        "1) JBO-1\n   [800 + 200 (tăng ca)] x 0,5 (hệ số) = 500 (SL thực nhận)"
+    )
+
+
+def test_jumbo_reads_the_overtime_output_column() -> None:
+    assert JUMBO_SEWING.detail.overtime_quantity_field == "overtime_output"
+    assert SEWING.detail.overtime_quantity_field is None
+    template = TWO_PEOPLE.model_copy(
+        update={"detail": DetailFields(overtime_quantity_field="ot")}
+    )
+    rows = [
+        _row(code_1=10, share_1=1.0, nick_1="an", ot=40),
+        _row(code_1=10, share_1=1.0, nick_1="an", ot=None),
+    ]
+    outputs = credit_workers(
+        ImportResult(rows=rows), template, FULL_MAPPING, "a.xlsx"
+    ).outputs
+    assert [o.detail.overtime_quantity for o in outputs] == [40.0, 0.0]
+
+
+def test_summary_keeps_units_apart_and_splits_overtime_per_unit() -> None:
+    employee = summarize_day(
+        [
+            _output(
+                unit="cái", quantity=100.0, detail=OutputDetail(overtime_quantity=40)
+            ),
+            _output(department="Sợi", unit="kg", quantity=8.0),
+        ],
+        DAY_1,
+    )[0]
+    assert build_messages(employee)[0].startswith(
+        "Sản lượng ngày 01/01/2030\n"
+        "Nguyễn Văn A – MS 10\n"
+        "TỔNG: 100 cái · 8 kg\n"
+        "Giờ thường 60 cái · Tăng ca 40 cái\n"
+        "──────────"
+    )
+
+
+def test_summary_leaves_out_the_split_when_some_overtime_is_only_marked() -> None:
+    employee = summarize_day(
+        [
+            _output(quantity=100.0, detail=OutputDetail("A", overtime_quantity=40)),
+            _output(quantity=10.0, detail=OutputDetail("B", overtime=True)),
+        ],
+        DAY_1,
+    )[0]
+    message = build_messages(employee)[0]
+    assert "TỔNG: 110 mét\n──────────" in message
+    assert "Giờ thường" not in message
+
+
+def test_a_rows_block_is_never_split_between_messages() -> None:
+    outputs = [
+        _output(quantity=float(i + 1), detail=OutputDetail(f"MA{i:03d}", step="S" * 70))
+        for i in range(60)
+    ]
+    messages = build_messages(summarize_day(outputs, DAY_1)[0])
+    assert len(messages) > 1
+    for message in messages:
+        assert message.endswith("(SL thực nhận)")
+    for message in messages[1:]:
+        assert message.splitlines()[2][0].isdigit()
+
+
 def test_message_omits_what_the_report_does_not_state() -> None:
     employee = summarize_day([_output(unit=None, quantity=5.0)], DAY_1)[0]
     assert build_messages(employee)[0].endswith(
-        "Dệt (Thợ chính): 5\n- 5 (SL chính 5, hệ số 1)"
+        "TỔNG: 5\n──────────\nDệt – Thợ chính: 5\n1) 5 (SL tổng) x 1 (hệ số) = 5 (SL thực nhận)"
     )
 
 
@@ -541,7 +645,7 @@ def test_long_message_is_split_between_lines_within_the_limit() -> None:
     assert len(messages) > 1
     assert all(len(message) <= MAX_MESSAGE_CHARS for message in messages)
     assert messages[0].startswith(f"Sản lượng ngày 01/01/2030 (phần 1/{len(messages)})")
-    assert all("Nguyễn Văn A (MS 10)" in message for message in messages)
+    assert all("Nguyễn Văn A – MS 10" in message for message in messages)
     sent = "\n".join(messages)
     assert all(f"MA{i:03d}" in sent for i in range(120))
 
@@ -552,7 +656,7 @@ def test_very_long_item_text_is_shortened_but_keeps_its_quantity() -> None:
     )[0]
     messages = build_messages(employee)
     assert len(messages) == 1
-    assert messages[0].endswith("...: 7 mét (SL chính 7, hệ số 1)")
+    assert messages[0].endswith("...\n   7 (SL tổng) x 1 (hệ số) = 7 (SL thực nhận)")
 
 
 def test_detail_is_read_from_the_template_fields_with_machine_as_text() -> None:
@@ -680,6 +784,34 @@ def test_broken_code_keeps_the_row_and_reports_the_person() -> None:
     assert "mã số" in credited.problems[0].reason
 
 
+def test_cutting_reads_the_unheaded_full_name_column_after_the_shares() -> None:
+    day = datetime(2030, 1, 1)
+    rows: list[list[Any]] = [
+        ["Ngày SX", "CÔNG ĐOẠN SX", "MÃ CÔNG ĐOẠN", "Tên CN \nNV01", "Tên CN \nNV02"]
+        + [None, "Mã số 01", "Mã số 02", "S.LƯỢNG", "S.LƯỢNG ĐƠN VỊ (cái)", None, None],
+        [day, "CAT_AUTO", "M1", "AN", None, None, 10, None, 100, 100, 0, "Lê Văn An"],
+        # A failed name lookup keeps the row and falls back to the nickname.
+        [day, "CAT_AUTO", "M1", "BO", None, None, 11, None, 50, 50, 0, "#N/A"],
+    ]
+    preview = SheetPreview("NHAP LIEU", False, tuple(map(tuple, rows)))
+    layout = analyze_sheet(preview, CUTTING)
+    assert layout.matches["name_1"].status is MatchStatus.AUTO
+    mapping = {
+        key: match.column
+        for key, match in layout.matches.items()
+        if match.column is not None
+    }
+    result = read_rows(
+        _workbook(rows), "Sheet", CUTTING, mapping, layout.data_start_row
+    )
+    assert not result.rejected
+    credited = credit_workers(result, CUTTING, mapping, "cat.xlsx")
+    assert [(o.employee_code, o.employee_name) for o in credited.outputs] == [
+        ("10", "Lê Văn An"),
+        ("11", "BO"),
+    ]
+
+
 def test_share_of_a_repeated_output_counts_for_every_person() -> None:
     rows = [
         [None] * 5 + [100, None, None, None, 100],
@@ -729,6 +861,8 @@ def test_template_only_refers_to_fields_it_declares(template: ReportTemplate) ->
         ("Lê Bình", True),
         ("an", False),
         ("  AN  ", False),
+        ("TUAN_ANH", False),
+        ("tuan_anh", False),
         ("", False),
     ],
 )

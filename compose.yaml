@@ -1,0 +1,23 @@
+# Dùng làm "Dự án" (Project) trong Container Manager của DSM, hoặc `docker compose up -d`.
+# Không có mục build: Container Manager build bằng BuildKit, mà BuildKit lỗi seccomp trên
+# Synology. Build image trước qua SSH: sudo DOCKER_BUILDKIT=0 docker build -t gui-san-luong:latest .
+services:
+  gui-san-luong:
+    image: gui-san-luong:latest
+    # Image chỉ có trên NAS, không tải từ Docker Hub.
+    pull_policy: never
+    container_name: gui-san-luong
+    restart: unless-stopped
+    # Trang chưa có đăng nhập: chỉ mở trong mạng nội bộ, không mở port này ra Internet
+    # (không port-forward trên router, không gắn vào reverse proxy công khai).
+    ports:
+      # Cổng NAS 8900 → cổng 8900 của Streamlit trong container (đặt trong Dockerfile).
+      - "8900:8900"
+    # Tài khoản chạy trong container phải ghi được thư mục ./data. Mặc định 1000:1000;
+    # trên DSM có thể đổi thành UID:GID của tài khoản sở hữu thư mục (lệnh `id <tên>`).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      # SQLite (gui_san_luong.db, import_cache.db) nằm ở đây, giữ lại khi cập nhật image.
+      - ./data:/app/data
+      # .env được đọc lại mỗi lần dùng: thay ZALO_OA_ACCESS_TOKEN không cần khởi động lại.
+      - ./.env:/app/.env:ro

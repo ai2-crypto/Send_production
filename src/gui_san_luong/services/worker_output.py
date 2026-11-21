@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from typing import Any
 
 from gui_san_luong.domain.production_templates import (
@@ -27,6 +28,58 @@ MAX_MESSAGE_CHARS = 2000
 # Some item cells hold a long description; a line must stay far below the message limit.
 MAX_ITEM_CHARS = 80
 RATIO_DECIMALS = 3
+SEPARATOR = "─" * 10
+# No blank line between blocks: the "1)", "2)" numbering already marks where a row starts,
+# and users asked for a compact message.
+BLOCK_GAP = "\n"
+# With no blank lines, indenting a row's later lines shows where each numbered row ends.
+DETAIL_INDENT = "   "
+
+
+class TextStyle(StrEnum):
+    PLAIN = "plain"
+    # Same layout, with an emoji before each kind of figure: Zalo text has no bold or colour,
+    # and emoji are the only colour a reader's eye can catch.
+    EMOJI = "emoji"
+
+
+@dataclass(frozen=True)
+class Markers:
+    title: str = ""
+    person: str = ""
+    total: str = ""
+    split: str = ""
+    department: str = ""
+    shift: str = ""
+    machine: str = ""
+    item: str = ""
+    step: str = ""
+    result: str = ""
+    # Shift and machine on the numbered line, the item code below it where it is easy to read.
+    item_on_own_line: bool = False
+
+
+MARKERS = {
+    TextStyle.PLAIN: Markers(),
+    TextStyle.EMOJI: Markers(
+        title="📅 ",
+        person="👤 ",
+        total="✅ ",
+        split="⏱ ",
+        department="🏭 ",
+        shift="🕐 ",
+        machine="⚙️ ",
+        item="📦 ",
+        step="🔧 ",
+        result="👉 ",
+        item_on_own_line=True,
+    ),
+}
+
+
+def message_length(text: str) -> int:
+    """Length as Zalo likely counts it, in UTF-16 units: most emoji count twice."""
+    return len(text.encode("utf-16-le")) // 2
 
 
 @dataclass(frozen=True)
@@ -36,6 +89,8 @@ class OutputDetail:
     shift: str | None = None
     overtime: bool = False
     step: str | None = None
+    # Of the row's whole output, before it is split between people.
+    overtime_quantity: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -52,6 +107,8 @@ class WorkerOutput:
     # The output of the whole row, before it is split between people.
     base_quantity: float
     detail: OutputDetail = OutputDetail()
+    # Where the figure was read, so an edit can be shown row by row as it was made in Excel.
+    excel_row: int | None = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +170,13 @@ class DetailLine:
     def ratio(self) -> float:
         """Worked out from the result, as reports state coefficients on different scales."""
         return self.quantity / self.base_quantity if self.base_quantity else 0.0
+
+    @property
+    def overtime_share(self) -> float:
+        """The person's share splits between regular and overtime as the row's output does."""
+        if not self.base_quantity:
+            return 0.0
+        return self.quantity * self.detail.overtime_quantity / self.base_quantity
 
 
 @dataclass(frozen=True)
@@ -186,7 +250,14 @@ def _build_detail(fields: DetailFields, row: dict[str, Any]) -> OutputDetail:
         overtime=bool(
             fields.overtime_field and normalize_code(row.get(fields.overtime_field))
         ),
+        overtime_quantity=_number(row, fields.overtime_quantity_field),
     )
+
+
+def _number(row: dict[str, Any], key: str | None) -> float:
+    """A blank cell here means no overtime, not a missing figure: the total still stands."""
+    value = row.get(key) if key else None
+    return float(value) if isinstance(value, int | float) else 0.0
 
 
 def is_slot_mapped(slot: WorkerSlot, mapping: dict[str, int]) -> bool:
@@ -262,6 +333,7 @@ def _credit_slot(
         unit=template.unit,
         base_quantity=row[template.quantity_field],
         detail=_build_detail(template.detail, row),
+        excel_row=row_number,
     )
 
 
@@ -388,8 +460,12 @@ def find_day_overlaps(
 
 
 def is_full_name(name: str) -> bool:
-    """Nicknames used on the shop floor are one word; a Vietnamese full name has several."""
-    return len(normalize_header(name).split()) >= MIN_FULL_NAME_WORDS
+    """Nicknames used on the shop floor are one word; a Vietnamese full name has several.
+
+    Words are split on spaces only: "TUAN_ANH" is a single nickname, not two names.
+    """
+    words = [word for word in name.split() if normalize_header(word)]
+    return len(words) >= MIN_FULL_NAME_WORDS
 
 
 def find_incomplete_identities(
@@ -457,17 +533,46 @@ def group_by_department(
     return dict(sorted(groups.items()))
 
 
-def find_name_conflicts(outputs: Iterable[WorkerOutput]) -> dict[str, list[str]]:
-    """Codes attached to different full names, which would merge two people's output."""
-    full_names: defaultdict[str, dict[str, str]] = defaultdict(dict)
+@dataclass(frozen=True)
+class NameVariant:
+    """One of the full names written for a shared code, and where it was written."""
+
+    name: str
+    sources: tuple[str, ...]
+    departments: tuple[str, ...]
+
+
+def find_name_conflicts(
+    outputs: Iterable[WorkerOutput],
+) -> dict[str, list[NameVariant]]:
+    """Codes attached to different full names, which would merge two people's output.
+
+    Each name keeps the files it came from, so the operator can open them and compare.
+    """
+    names: defaultdict[str, dict[str, str]] = defaultdict(dict)
+    sources: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
+    departments: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
     for output in outputs:
-        if is_full_name(output.employee_name):
-            normalized = normalize_header(output.employee_name)
-            full_names[output.employee_code][normalized] = output.employee_name
+        if not is_full_name(output.employee_name):
+            continue
+        key = (output.employee_code, normalize_header(output.employee_name))
+        names[output.employee_code].setdefault(key[1], output.employee_name)
+        sources[key].add(output.source)
+        departments[key].add(output.department)
     return {
-        code: sorted(names.values())
-        for code, names in full_names.items()
-        if len(names) > 1
+        code: sorted(
+            (
+                NameVariant(
+                    name=name,
+                    sources=tuple(sorted(sources[(code, normalized)])),
+                    departments=tuple(sorted(departments[(code, normalized)])),
+                )
+                for normalized, name in variants.items()
+            ),
+            key=lambda variant: variant.name,
+        )
+        for code, variants in names.items()
+        if len(variants) > 1
     }
 
 
@@ -498,60 +603,164 @@ def _shortened(text: str | None) -> str:
     return f"{text[:MAX_ITEM_CHARS]}..." if len(text) > MAX_ITEM_CHARS else text
 
 
-def _format_detail(detail: DetailLine, unit: str | None) -> str:
-    parts = [
-        f"Ca {detail.detail.shift}" if detail.detail.shift else "",
-        f"máy {detail.detail.machine}" if detail.detail.machine else "",
-        _shortened(detail.detail.item),
-        _shortened(detail.detail.step),
-    ]
-    described = ", ".join(part for part in parts if part)
-    amounts = (
-        f"{_with_unit(detail.quantity, unit)} "
-        f"(SL chính {format_quantity(detail.base_quantity)}, "
-        f"hệ số {format_quantity(detail.ratio, RATIO_DECIMALS)})"
-    )
-    overtime = ", tăng ca" if detail.detail.overtime else ""
+def share_calculation(detail: DetailLine) -> str:
+    """The left side of the sum, so a person can redo it: SL tổng × hệ số."""
+    overtime = detail.detail.overtime_quantity
+    if overtime:
+        regular = detail.base_quantity - overtime
+        base = f"[{format_quantity(regular)} + {format_quantity(overtime)} (tăng ca)]"
+    elif detail.detail.overtime:
+        base = f"{format_quantity(detail.base_quantity)} (SL tổng, tăng ca)"
+    else:
+        base = f"{format_quantity(detail.base_quantity)} (SL tổng)"
+    return f"{base} x {format_quantity(detail.ratio, RATIO_DECIMALS)} (hệ số)"
+
+
+def _format_share(detail: DetailLine, markers: Markers) -> str:
+    """Written as the sum it is: SL tổng × hệ số = SL thực nhận."""
     return (
-        f"- {described}: {amounts}{overtime}" if described else f"- {amounts}{overtime}"
+        f"{share_calculation(detail)} = "
+        f"{markers.result}{format_quantity(detail.quantity)} (SL thực nhận)"
     )
 
 
-def _message_lines(employee: EmployeeDay) -> list[str]:
-    lines: list[str] = []
+def _detail_parts(detail: DetailLine, markers: Markers) -> list[str]:
+    """What the row is: shift, machine, item and step, laid out for the style."""
+    shift = f"Ca {detail.detail.shift}" if detail.detail.shift else ""
+    machine = f"máy {detail.detail.machine}" if detail.detail.machine else ""
+    item = _shortened(detail.detail.item)
+    step = _shortened(detail.detail.step)
+    if not markers.item_on_own_line:
+        head = ", ".join(part for part in (shift, machine, item) if part)
+        return [part for part in (head, step) if part]
+    head = " · ".join(
+        f"{marker}{part[0].upper()}{part[1:]}"
+        for marker, part in ((markers.shift, shift), (markers.machine, machine))
+        if part
+    )
+    return [
+        part
+        for part in (
+            head,
+            f"{markers.item}{item}" if item else "",
+            f"{markers.step}{step}" if step else "",
+        )
+        if part
+    ]
+
+
+def _format_detail(number: int, detail: DetailLine, markers: Markers) -> str:
+    """A numbered block, so a person can point at the row they question."""
+    described = _detail_parts(detail, markers)
+    share = _format_share(detail, markers)
+    lines = (
+        [f"{number}) {described[0]}", *described[1:], share]
+        if described
+        else [f"{number}) {share}"]
+    )
+    return "\n".join([lines[0], *(DETAIL_INDENT + line for line in lines[1:])])
+
+
+def department_title(line: EmployeeLine) -> str:
+    process = f" {line.process}" if line.process else ""
+    return f"{line.department}{process} – {line.role}"
+
+
+def _department_header(line: EmployeeLine, markers: Markers) -> str:
+    return (
+        f"{markers.department}{department_title(line)}: "
+        f"{_with_unit(line.quantity, line.unit)}"
+    )
+
+
+def day_totals(employee: EmployeeDay) -> str:
+    """The day's total per unit, e.g. "100 cái · 8 kg"."""
+    totals: dict[str | None, float] = {}
     for line in employee.lines:
-        lines.append(format_line(line))
-        lines.extend(_format_detail(detail, line.unit) for detail in line.details)
-    return lines
+        totals[line.unit] = totals.get(line.unit, 0.0) + line.quantity
+    return " · ".join(_with_unit(q, unit) for unit, q in totals.items())
 
 
-def _fit_into_parts(lines: Iterable[str], room: int) -> list[list[str]]:
+def _summary(employee: EmployeeDay, markers: Markers) -> str:
+    """The day's total first, kept apart per unit because kg and pieces do not add up."""
+    totals: dict[str | None, float] = {}
+    overtime: dict[str | None, float] = {}
+    flagged_only = False
+    for line in employee.lines:
+        totals[line.unit] = totals.get(line.unit, 0.0) + line.quantity
+        for detail in line.details:
+            overtime[line.unit] = overtime.get(line.unit, 0.0) + detail.overtime_share
+            flagged_only |= detail.detail.overtime and not detail.overtime_share
+    rows = [f"{markers.total}TỔNG: {day_totals(employee)}"]
+    # A row marked overtime without its overtime output would make "giờ thường" wrong.
+    if any(overtime.values()) and not flagged_only:
+        several = len(totals) > 1
+        rows.extend(
+            f"{markers.split}Giờ thường {_with_unit(totals[unit] - ot, unit if several else None)}"
+            f" · Tăng ca {_with_unit(ot, unit if several else None)}"
+            for unit, ot in overtime.items()
+            if ot
+        )
+    rows.append(SEPARATOR)
+    return "\n".join(rows)
+
+
+def _message_blocks(employee: EmployeeDay, markers: Markers) -> list[str]:
+    """Headings travel with the row they head, so a part never ends on a bare heading."""
+    blocks: list[str] = []
+    number = 0
+    for line in employee.lines:
+        heading = _department_header(line, markers)
+        for detail in line.details:
+            number += 1
+            text = _format_detail(number, detail, markers)
+            blocks.append(f"{heading}\n{text}" if heading else text)
+            heading = ""
+        if heading:
+            blocks.append(heading)
+    summary = _summary(employee, markers)
+    if blocks:
+        blocks[0] = f"{summary}\n{blocks[0]}"
+    else:
+        blocks.append(summary)
+    return blocks
+
+
+def _fit_into_parts(blocks: Iterable[str], room: int) -> list[list[str]]:
+    """Whole blocks only, so a row's quantity never lands apart from what it describes."""
     parts: list[list[str]] = [[]]
     used = 0
-    for line in lines:
-        cost = len(line) + 1
+    for block in blocks:
+        cost = message_length(block) + len(BLOCK_GAP)
         if parts[-1] and used + cost > room:
             parts.append([])
             used = 0
-        parts[-1].append(line)
+        parts[-1].append(block)
         used += cost
     return parts
 
 
-def build_messages(employee: EmployeeDay) -> list[str]:
-    """The text to send, split between lines when it would exceed what Zalo accepts."""
-    title = f"Sản lượng ngày {employee.day:%d/%m/%Y}"
-    person = f"{employee.employee_name} (MS {employee.employee_code})"
+def build_messages(
+    employee: EmployeeDay, style: TextStyle = TextStyle.PLAIN
+) -> list[str]:
+    """The text to send, split between blocks when it would exceed what Zalo accepts."""
+    markers = MARKERS[style]
+    title = f"{markers.title}Sản lượng ngày {employee.day:%d/%m/%Y}"
+    person = f"{markers.person}{employee.employee_name} – MS {employee.employee_code}"
     # Leaves room for the title, the person and a "(phần 10/10)" marker on every part.
-    room = MAX_MESSAGE_CHARS - len(title) - len(person) - len(" (phần 10/10)\n\n\n")
-    parts = _fit_into_parts(_message_lines(employee), room)
+    room = (
+        MAX_MESSAGE_CHARS
+        - message_length(title)
+        - message_length(person)
+        - len(" (phần 10/10)\n\n")
+    )
+    parts = _fit_into_parts(_message_blocks(employee, markers), room)
     return [
         "\n".join(
             [
                 f"{title} (phần {number}/{len(parts)})" if len(parts) > 1 else title,
                 person,
-                "",
-                *part,
+                BLOCK_GAP.join(part),
             ]
         )
         for number, part in enumerate(parts, start=1)

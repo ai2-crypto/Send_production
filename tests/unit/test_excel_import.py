@@ -1,5 +1,6 @@
 """Parser behaviour on synthetic workbooks; no real production data belongs here."""
 
+import zipfile
 from collections.abc import Callable
 from datetime import datetime
 from io import BytesIO
@@ -18,6 +19,9 @@ from gui_san_luong.services.excel_import import (
     ExcelImportError,
     MatchStatus,
     SheetPreview,
+    _formula_cells,
+    _scan_formulas_exact,
+    _scan_formulas_fast,
     analyze_sheet,
     column_letter,
     normalize_header,
@@ -362,3 +366,47 @@ def test_template_is_suggested_from_file_name(
 def test_corrupt_file_gives_a_readable_error(data: bytes) -> None:
     with pytest.raises(ExcelImportError):
         read_previews(data)
+
+
+# Cells as Excel writes them: a formula, then its stored result if it has one.
+SHEET_XML = (
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    "<sheetData>"
+    '<row r="1"><c r="A1"><f>1+1</f></c><c r="B1"><f>1+1</f><v>2</v></c></row>'
+    '<row r="2"><c r="A2" t="str"><f t="shared" ref="A2:A3" si="0">""</f><v></v></c>'
+    '<c r="B2" s="1"><v>5</v></c></row>'
+    '<row r="3"><c r="A3" t="str"><f t="shared" si="0"/><v/></c>'
+    '<c r="B3"><f t="array" ref="B3">SUM(1)</f></c></row>'
+    '<row r="12"><c r="AB12">\n  <f>X1</f>\n</c></row>'
+    "</sheetData></worksheet>"
+)
+
+
+def _archive(xml: str) -> zipfile.ZipFile:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", xml)
+    return zipfile.ZipFile(BytesIO(buffer.getvalue()))
+
+
+def test_fast_formula_scan_finds_formulas_without_a_stored_result() -> None:
+
+    found = _scan_formulas_fast(SHEET_XML.encode(), {0, 1, 27}, 1)
+    assert found == {(1, 0), (2, 0), (3, 0), (12, 27)}
+
+
+def test_fast_and_exact_formula_scans_agree_on_cells_without_a_result() -> None:
+
+    with _archive(SHEET_XML) as archive:
+        exact = _scan_formulas_exact(archive, "xl/worksheets/sheet1.xml", {0, 1, 27}, 2)
+    fast = _scan_formulas_fast(SHEET_XML.encode(), {0, 1, 27}, 2)
+    # The exact scan lists every formula; the caller keeps those whose value is empty.
+    assert fast == exact - {(1, 1)} == {(2, 0), (3, 0), (12, 27)}
+
+
+def test_cells_without_references_fall_back_to_the_exact_scan() -> None:
+
+    xml = SHEET_XML.replace('<c r="A1">', "<c>")
+    with _archive(xml) as archive:
+        found = _formula_cells(archive, "xl/worksheets/sheet1.xml", {0}, 1)
+    assert found == {(1, 0), (2, 0), (3, 0)}

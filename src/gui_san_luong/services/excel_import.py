@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import StrEnum
 from io import BytesIO
 from typing import Annotated, Any
+from xml.etree import ElementTree
 from xml.etree.ElementTree import ParseError
 
 from openpyxl import load_workbook
@@ -33,6 +34,18 @@ HEADER_SCAN_ROWS = 15
 PREVIEW_ROWS = 80
 TOTAL_TOLERANCE = 0.01
 TOTAL_ROW_PREFIXES = ("tong", "cong", "total", "subtotal")
+# A cell whose formula is followed by no result, or an empty one, before the cell closes.
+# Excel always writes a cell's formula first, then its result.
+UNCACHED_FORMULA_CELL = re.compile(
+    rb"<(?:\w+:)?c\b([^>]*)>\s*"
+    rb"<(?:\w+:)?f\b([^>]*?)(?:/>|>[^<]*</(?:\w+:)?f>)\s*"
+    rb"(?:<(?:\w+:)?v\b[^>]*/>|<(?:\w+:)?v\b[^>]*>\s*</(?:\w+:)?v>)?\s*"
+    rb"</(?:\w+:)?c>"
+)
+CELL_REFERENCE = re.compile(rb'\br="([A-Za-z]+)(\d+)"')
+FORMULA_TYPE_ARRAY = re.compile(rb'\bt="array"')
+# Above this, the sheet XML is scanned as a stream instead of being held in memory.
+MAX_FAST_SCAN_BYTES = 400 * 1024 * 1024
 EXCEL_ERROR_PATTERN = re.compile(r"^#(REF!|N/A|VALUE!|DIV/0!|NAME\?|NUM!|NULL!)")
 
 # openpyxl warns about Excel features it ignores, such as print headers; none affect cell values.
@@ -133,7 +146,7 @@ def column_letter(column: int) -> str:
 
 
 @contextmanager
-def _open_workbook(data: bytes, *, data_only: bool) -> Iterator[Workbook]:
+def open_workbook(data: bytes, *, data_only: bool) -> Iterator[Workbook]:
     if len(data) > MAX_FILE_BYTES:
         raise ExcelImportError(f"File vượt quá {MAX_FILE_BYTES // (1024 * 1024)} MB.")
     try:
@@ -150,7 +163,7 @@ def _open_workbook(data: bytes, *, data_only: bool) -> Iterator[Workbook]:
 
 def read_previews(data: bytes) -> list[SheetPreview]:
     """Read the first rows of every sheet, enough to recognize headers and column types."""
-    with _open_workbook(data, data_only=True) as workbook:
+    with open_workbook(data, data_only=True) as workbook:
         return [
             SheetPreview(
                 name=sheet.title,
@@ -369,15 +382,86 @@ def _cell(row: Sequence[Any], column: int | None) -> Any:
     return row[column] if column is not None and column < len(row) else None
 
 
-def _is_uncached_formula(
-    formula_row: Sequence[Any], value_row: Sequence[Any], column: int
-) -> bool:
-    formula = _cell(formula_row, column)
-    return (
-        isinstance(formula, str)
-        and formula.startswith("=")
-        and _cell(value_row, column) is None
-    )
+def _local_name(tag: str) -> str:
+    return tag.rpartition("}")[2]
+
+
+def _column_index(reference: str) -> int:
+    """Zero-based column of a cell reference such as "AB12"."""
+    letters = reference.rstrip("0123456789")
+    index = 0
+    for letter in letters.upper():
+        index = index * 26 + ord(letter) - ord("A") + 1
+    return index - 1
+
+
+def _formula_cells(
+    archive: zipfile.ZipFile, sheet_path: str, columns: set[int], min_row: int
+) -> set[tuple[int, int]]:
+    """Cells in these columns whose formula may lack a stored result.
+
+    As (Excel row, zero-based column); the caller still checks that the read value is empty.
+    Read straight from the sheet XML rather than through openpyxl's formula mode, which
+    rewrites every shared formula for every cell and was most of an import's time. Only
+    whether a formula is present matters, not its text. Array formulas are left out, as
+    openpyxl never reported them as formula text either.
+    """
+    if archive.getinfo(sheet_path).file_size <= MAX_FAST_SCAN_BYTES:
+        found = _scan_formulas_fast(archive.read(sheet_path), columns, min_row)
+        if found is not None:
+            return found
+    return _scan_formulas_exact(archive, sheet_path, columns, min_row)
+
+
+def _scan_formulas_fast(
+    xml: bytes, columns: set[int], min_row: int
+) -> set[tuple[int, int]] | None:
+    """Formula cells with no stored result, or None when a cell lacks its reference."""
+    found: set[tuple[int, int]] = set()
+    for match in UNCACHED_FORMULA_CELL.finditer(xml):
+        cell_attributes, formula_attributes = match.groups()
+        if FORMULA_TYPE_ARRAY.search(formula_attributes):
+            continue
+        reference = CELL_REFERENCE.search(cell_attributes)
+        if reference is None:
+            return None
+        row = int(reference.group(2))
+        column = _column_index(reference.group(1).decode())
+        if row >= min_row and column in columns:
+            found.add((row, column))
+    return found
+
+
+def _scan_formulas_exact(
+    archive: zipfile.ZipFile, sheet_path: str, columns: set[int], min_row: int
+) -> set[tuple[int, int]]:
+    """Every formula cell, following the XML structure; slower but needs no references."""
+    found: set[tuple[int, int]] = set()
+    row_number = 0
+    column = -1
+    with archive.open(sheet_path) as stream:
+        for event, element in ElementTree.iterparse(stream, events=("start", "end")):
+            name = _local_name(element.tag)
+            if event == "start":
+                if name == "row":
+                    reference = element.get("r")
+                    row_number = int(reference) if reference else row_number + 1
+                    column = -1
+                continue
+            if name == "c":
+                reference = element.get("r")
+                column = _column_index(reference) if reference else column + 1
+                if row_number >= min_row and column in columns:
+                    formula = next(
+                        (child for child in element if _local_name(child.tag) == "f"),
+                        None,
+                    )
+                    if formula is not None and formula.get("t") != "array":
+                        found.add((row_number, column))
+            elif name == "row":
+                # Rows are not needed once read; clearing keeps memory flat on big sheets.
+                element.clear()
+    return found
 
 
 def _stated_total(
@@ -521,10 +605,7 @@ def read_rows(
     quantity_column = mapping[template.quantity_field]
     seen_keys: Counter[tuple[Any, ...]] = Counter()
 
-    with (
-        _open_workbook(data, data_only=True) as values,
-        _open_workbook(data, data_only=False) as formulas,
-    ):
+    with open_workbook(data, data_only=True) as values:
         if sheet_name not in values.sheetnames:
             raise ExcelImportError(f"Không có sheet {sheet_name!r} trong file.")
         value_sheet = values[sheet_name]
@@ -534,21 +615,32 @@ def read_rows(
             value_sheet.iter_rows(max_row=data_start_row - 1, values_only=True)
         )
         headers = _header_cells(header_rows, data_start_row)
+        # openpyxl keeps where the sheet lives in the package only on this private attribute.
+        sheet_path = getattr(value_sheet, "_worksheet_path", None)
+        if not isinstance(sheet_path, str):
+            raise ExcelImportError(f"Không đọc được sheet {sheet_name!r}.")
+        try:
+            with zipfile.ZipFile(BytesIO(data)) as archive:
+                formula_cells = _formula_cells(
+                    archive, sheet_path, {date_column, quantity_column}, data_start_row
+                )
+        except (KeyError, ParseError, zipfile.BadZipFile) as error:
+            raise ExcelImportError(
+                "Không đọc được file. Hãy lưu lại dạng .xlsx rồi thử lại."
+            ) from error
 
-        paired = zip(
+        for row_number, value_row in enumerate(
             value_sheet.iter_rows(min_row=data_start_row, values_only=True),
-            formulas[sheet_name].iter_rows(min_row=data_start_row, values_only=True),
-            strict=True,
-        )
-        for row_number, (value_row, formula_row) in enumerate(
-            paired, start=data_start_row
+            start=data_start_row,
         ):
             date_value = _cell(value_row, date_column)
             quantity_value = _cell(value_row, quantity_column)
+            # A formula Excel never calculated reads as empty; it must not count as no output.
             uncached = [
                 column
                 for column in (date_column, quantity_column)
-                if _is_uncached_formula(formula_row, value_row, column)
+                if (row_number, column) in formula_cells
+                and _cell(value_row, column) is None
             ]
             if uncached:
                 letters = ", ".join(column_letter(column) for column in uncached)

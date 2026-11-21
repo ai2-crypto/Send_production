@@ -18,3 +18,6 @@ wheels/
 # Dữ liệu sản lượng thật: chỉ dùng thử nghiệm cục bộ, không commit
 data/excel_samples/*
 !data/excel_samples/README.md
+
+# Bản sạch để tải lên NAS, tạo bởi scripts/prepare_nas.ps1
+deploy/

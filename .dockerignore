@@ -1,0 +1,24 @@
+# Chỉ gửi vào image những gì cần để chạy. Bí mật, DB và file Excel thật không bao giờ vào image.
+.git
+.gitignore
+.venv
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+data
+tests
+**/.claude
+**/__pycache__
+*.py[oc]
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.streamlit/secrets.toml
+deploy
+scripts
+.nasignore
+Dockerfile
+compose.yaml
+.dockerignore
