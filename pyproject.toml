@@ -9,11 +9,14 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "cryptography>=50.0.2",
+    "fastapi>=0.165.0",
     "httpx>=0.28.1",
     "openpyxl>=3.1.5",
     "pillow>=13.0.0",
     "pydantic>=2.14.2",
+    "python-multipart>=0.0.33",
     "streamlit>=1.66.1",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
@@ -25,6 +28,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "respx>=0.23.1",

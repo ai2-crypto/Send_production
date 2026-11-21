@@ -29,6 +29,10 @@ from gui_san_luong.services.output_dispatch import (
 )
 from gui_san_luong.services.output_image import fonts_available
 from gui_san_luong.services.worker_output import EmployeeDay
+from gui_san_luong.services.zalo_texts import (
+    RECIPIENT_STATE_TEXTS,
+    send_result_text,
+)
 from gui_san_luong.ui.zalo_state import (
     TOKEN_MISSING,
     access_token,
@@ -36,21 +40,12 @@ from gui_san_luong.ui.zalo_state import (
     format_vietnam_time,
     loaded_archive,
     rescan_button,
-    send_failure_text,
 )
 from gui_san_luong.zalo.client import ZaloClient
 
 # There is no login yet, so a send cannot be attributed to a person.
 LOCAL_ACTOR = "local"
 RESULTS_KEY = "output_send_results"
-STATE_LABELS = {
-    RecipientState.READY: "📤 Sẽ gửi",
-    RecipientState.NOT_LINKED: "🔗 Chưa nối Zalo",
-    RecipientState.NO_INTERACTION: "🚫 Chưa tương tác với OA: không gửi",
-    RecipientState.NEEDS_INTERACTION: "⛔ Quá 7 ngày chưa tương tác: Zalo sẽ từ chối",
-    RecipientState.ALREADY_SENT: "✅ Đã gửi đúng nội dung này",
-    RecipientState.UNKNOWN_BEFORE: "❓ Lần trước không rõ đã gửi chưa",
-}
 WINDOW_LABELS = {
     Eligibility.FREE: "🟢 miễn phí (trong 48 giờ)",
     Eligibility.PAID: "🟡 có thể tính phí (48 giờ – 7 ngày)",
@@ -59,7 +54,7 @@ MINUTE_MS = 60_000
 HOUR_MS = 60 * MINUTE_MS
 DAY_MS = 24 * HOUR_MS
 # Ready people first, the soonest to lose their free window at the top.
-STATE_ORDER = list(STATE_LABELS)
+STATE_ORDER = list(RECIPIENT_STATE_TEXTS)
 WINDOW_ORDER = [Eligibility.FREE, Eligibility.PAID, None, Eligibility.NEEDS_INTERACTION]
 OUTCOME_LABELS = {
     SendOutcome.SENT: "✅ Đã gửi",
@@ -97,19 +92,6 @@ def plan_day(
     )
 
 
-def _result_detail(result: RecipientResult) -> str:
-    if result.outcome is SendOutcome.SENT:
-        return f"{_count(len(result.message_ids))} tin"
-    if result.outcome is SendOutcome.UNKNOWN:
-        return (
-            "Mất kết nối hoặc Zalo lỗi khi gửi. Đừng gửi lại ngay: xem hội thoại ở tab "
-            "“Tin nhắn Zalo (thử)” trước."
-        )
-    if result.outcome is SendOutcome.STOPPED:
-        return "Không gửi vì lô đã dừng ở lỗi phía trên."
-    return send_failure_text(result.error_code, result.error_message)
-
-
 def _show_results(day: date) -> None:
     results: list[RecipientResult] | None = st.session_state.get(RESULTS_KEY, {}).get(
         day
@@ -137,7 +119,7 @@ def _show_results(day: date) -> None:
                 "Mã NV": result.plan.employee.employee_code,
                 "Họ tên": result.plan.employee.employee_name,
                 "Kết quả": OUTCOME_LABELS[result.outcome],
-                "Chi tiết": _result_detail(result),
+                "Chi tiết": send_result_text(result),
             }
             for result in results
         ],
@@ -229,8 +211,8 @@ def _plan_table(
             {
                 "Mã NV": plan.employee.employee_code,
                 "Họ tên": plan.employee.employee_name,
-                "Dạng chữ": STATE_LABELS[plan.state],
-                "Dạng ảnh": STATE_LABELS[image.state] if image else "",
+                "Dạng chữ": RECIPIENT_STATE_TEXTS[plan.state],
+                "Dạng ảnh": RECIPIENT_STATE_TEXTS[image.state] if image else "",
                 "Khung gửi": window,
                 "Hiệu lực đến": until,
                 "Số tin": _count(len(plan.pending_parts or plan.messages)),
@@ -370,7 +352,7 @@ def _show_summary(
     ]
     lines += [
         f"- Bỏ qua {_count(states[state])} người — {label}"
-        for state, label in STATE_LABELS.items()
+        for state, label in RECIPIENT_STATE_TEXTS.items()
         if state not in (RecipientState.READY, RecipientState.ALREADY_SENT)
         and states[state]
     ]

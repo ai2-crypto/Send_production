@@ -23,7 +23,12 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from gui_san_luong.config import token_encryption_key, zalo_app_id, zalo_secret_key
+from gui_san_luong.config import (
+    token_encryption_key,
+    zalo_access_token,
+    zalo_app_id,
+    zalo_secret_key,
+)
 from gui_san_luong.db.connection import open_database
 from gui_san_luong.db.oauth_tokens import (
     ACTION_TOKENS_REFRESHED,
@@ -353,3 +358,16 @@ def current_access_token(
             "Using the stored OA access token after a failed refresh: %s", error
         )
         return _decrypt(fernet, record.access_token_enc)
+
+
+def resolve_access_token(path: Path) -> str:
+    """The token to call Zalo with: the stored one, refreshed if due, else .env's.
+
+    Empty when there is none. A setup or storage problem is not raised here: the token
+    status says what is wrong, and callers only need to know whether they can call Zalo.
+    """
+    try:
+        stored = current_access_token(path, TokenSettings.from_environment())
+    except TokenSetupError, TokenStorageError:
+        stored = None
+    return stored or zalo_access_token()

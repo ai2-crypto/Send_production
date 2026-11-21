@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import streamlit as st
 
-from gui_san_luong.config import database_path, zalo_access_token
+from gui_san_luong.config import database_path
 from gui_san_luong.services.message_store import (
     MessageStorageError,
     forget_stored_messages,
@@ -21,20 +21,11 @@ from gui_san_luong.services.zalo_messages import (
     fetch_all_messages,
     fetch_conversation,
 )
-from gui_san_luong.services.zalo_token import (
-    TokenSettings,
-    TokenSetupError,
-    TokenStorageError,
-    current_access_token,
-)
+from gui_san_luong.services.zalo_texts import error_text, send_failure_text
+from gui_san_luong.services.zalo_token import resolve_access_token
 from gui_san_luong.zalo.client import ZaloClient
 from gui_san_luong.zalo.errors import (
-    ZaloAuthError,
-    ZaloConfigurationError,
     ZaloError,
-    ZaloRateLimitError,
-    ZaloUnavailableError,
-    error_for,
 )
 
 TOKEN_KEY = "zalo_test_access_token"
@@ -69,14 +60,7 @@ def access_token() -> str:
     A token pasted for this session only; then the stored token, refreshed by the app; then
     ZALO_OA_ACCESS_TOKEN from the environment or .env, kept for setups without stored tokens.
     """
-    if token := pasted_token():
-        return token
-    try:
-        stored = current_access_token(database_path(), TokenSettings.from_environment())
-    except TokenSetupError, TokenStorageError:
-        # The token section on the messages tab says what is wrong.
-        stored = None
-    return stored or zalo_access_token()
+    return pasted_token() or resolve_access_token(database_path())
 
 
 def loaded_archive() -> MessageArchive | None:
@@ -101,25 +85,6 @@ def forget_archive() -> None:
     # None, not absent: absent would restore from the database again.
     st.session_state[ARCHIVE_KEY] = None
     st.rerun()
-
-
-def error_text(error: ZaloError) -> str:
-    if isinstance(error, ZaloAuthError):
-        return (
-            "Access token không hợp lệ hoặc đã hết hạn. Bấm “Làm mới ngay” ở tab “Tin nhắn "
-            "Zalo (thử)”, hoặc dán token mới từ API Explorer."
-        )
-    if isinstance(error, ZaloRateLimitError):
-        return "Zalo báo gọi quá nhiều trong một phút. Hãy đợi một phút rồi thử lại."
-    if isinstance(error, ZaloConfigurationError):
-        return (
-            f"Ứng dụng hoặc OA chưa đủ quyền (mã lỗi {error.code}). Hãy kiểm tra ứng dụng "
-            "đã được cấp “Quyền quản lý tin nhắn người dùng” và gói dịch vụ của OA."
-        )
-    if isinstance(error, ZaloUnavailableError):
-        return "Không kết nối được Zalo hoặc Zalo đang lỗi. Hãy thử lại sau ít phút."
-    code = f" (mã lỗi {error.code})" if error.code is not None else ""
-    return f"Zalo từ chối yêu cầu{code}: {error.message}"
 
 
 def load_archive(token: str, extra_ids: list[str], only_extra: bool = False) -> None:
@@ -166,41 +131,6 @@ def load_archive(token: str, extra_ids: list[str], only_extra: bool = False) -> 
     st.rerun()
 
 
-RECIPIENT_BLOCKED_CODES = frozenset({-213, -217, -227, -230, -232, -244})
-QUOTA_CODES = frozenset({-211, -218})
-NIGHT_CODE = -234
-
-
-def send_failure_text(code: int | None, message: str | None) -> str:
-    """Why Zalo did not take a message, and what the operator can do about it."""
-    if code is None:
-        return "Không kết nối được Zalo nên tin chưa được gửi. Có thể gửi lại."
-    if code in RECIPIENT_BLOCKED_CODES:
-        return (
-            f"Zalo không cho gửi đến người này (mã lỗi {code}). Thường là do họ đã quá "
-            "7 ngày không tương tác với OA, chưa quan tâm hoặc đã chặn OA. Hãy nhờ họ nhắn "
-            "một tin đến OA rồi thử lại."
-        )
-    if code in QUOTA_CODES:
-        return f"Đã hết hạn mức gửi tin (mã lỗi {code}). Đừng thử lại ngay."
-    if code == NIGHT_CODE:
-        return "Zalo không cho gửi loại tin này từ 22 giờ đến 7 giờ. Hãy gửi sau 7 giờ."
-    error = error_for(code, message or "")
-    if isinstance(error, ZaloAuthError):
-        return (
-            "Access token không hợp lệ hoặc đã hết hạn. Bấm “Làm mới ngay” ở tab “Tin nhắn "
-            "Zalo (thử)”, hoặc dán token mới từ API Explorer."
-        )
-    if isinstance(error, ZaloRateLimitError):
-        return "Zalo báo gọi quá nhiều trong một phút. Hãy đợi một phút rồi thử lại."
-    if isinstance(error, ZaloConfigurationError):
-        return (
-            f"Ứng dụng hoặc OA chưa đủ quyền gửi tin (mã lỗi {code}). Hãy kiểm tra quyền "
-            "“Gửi tin và thông báo qua OA” và gói dịch vụ của OA."
-        )
-    return f"Zalo từ chối tin (mã lỗi {code}): {message or ''}"
-
-
 def rescan_button(key: str) -> None:
     """Read new messages from Zalo on demand, with when they were last read beside it."""
     archive = loaded_archive()
@@ -220,3 +150,9 @@ def rescan_button(key: str) -> None:
                 f"{format_vietnam_time(epoch_ms(archive.fetched_at))}. Bấm quét lại để "
                 "biết ai vừa nhắn cho OA."
             )
+
+
+__all__ = [
+    "error_text",
+    "send_failure_text",
+]

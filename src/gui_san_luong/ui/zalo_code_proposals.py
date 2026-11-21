@@ -18,6 +18,7 @@ from gui_san_luong.services.zalo_codes import (
 )
 from gui_san_luong.services.zalo_links import InvalidLinksError, ZaloLinkStorageError
 from gui_san_luong.services.zalo_messages import MessageArchive
+from gui_san_luong.services.zalo_texts import proposal_status_text
 from gui_san_luong.ui.zalo_state import (
     epoch_ms,
     format_vietnam_time,
@@ -29,24 +30,6 @@ LOCAL_ACTOR = "local"
 NOTICE_KEY = "zalo_code_proposals_notice"
 
 
-def _status_text(proposal: LinkProposal) -> str:
-    match proposal.status:
-        case ProposalStatus.NEW:
-            return "Mới"
-        case ProposalStatus.REPLACES_ACCOUNT:
-            return f"Mã này đang nối Zalo khác ({proposal.replaced}): sẽ thay"
-        case ProposalStatus.MOVES_ACCOUNT:
-            return f"Zalo này đang nối mã {proposal.replaced}: sẽ chuyển sang mã mới"
-        case ProposalStatus.CLAIMED_BY_SEVERAL:
-            return "Nhiều Zalo cùng nhắn mã này: chỉ chọn một"
-        case ProposalStatus.NOT_IN_LIST:
-            return "Mã không có trong danh sách nhân viên"
-        case ProposalStatus.NO_LIST:
-            return "Chưa tải file sản lượng nên chưa đối chiếu được"
-        case ProposalStatus.UNCHANGED:
-            return "Đã nối đúng"
-
-
 def _table(proposals: Sequence[LinkProposal]) -> list[dict[str, Any]]:
     return [
         {
@@ -54,7 +37,7 @@ def _table(proposals: Sequence[LinkProposal]) -> list[dict[str, Any]]:
             "Tên Zalo": proposal.claim.display_name or "",
             "Mã NV": proposal.employee_code,
             "Họ tên trong danh sách": proposal.employee_name or "",
-            "Tình trạng": _status_text(proposal),
+            "Tình trạng": proposal_status_text(proposal),
             "Nhắn lúc": format_vietnam_time(proposal.claim.sent_ms),
             "Tin nhắn": proposal.claim.message,
             "Zalo user id": proposal.claim.user_id,

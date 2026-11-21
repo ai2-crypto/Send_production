@@ -10,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -19,21 +19,15 @@ import streamlit as st
 from gui_san_luong.config import database_path, import_cache_path
 from gui_san_luong.domain.production_templates import (
     TEMPLATES,
-    FieldKind,
     ReportTemplate,
 )
 from gui_san_luong.services.employee_roster import (
-    ROSTER_SHEETS,
     Roster,
-    fill_full_names,
     read_roster,
 )
 from gui_san_luong.services.excel_import import (
-    COUNTED_KEY,
     HEADER_SCAN_ROWS,
-    MAX_FILE_BYTES,
     PREVIEW_ROWS,
-    ROW_KEY,
     ExcelImportError,
     FieldMatch,
     ImportResult,
@@ -51,33 +45,42 @@ from gui_san_luong.services.import_cache import cache_key, cached, file_digest
 from gui_san_luong.services.output_changes import (
     ChangeStorageError,
     OutputChange,
-    TrackedFile,
-    VersionOutcome,
     load_open_changes,
     mark_changes_handled,
-    record_version,
-    source_key,
 )
 from gui_san_luong.services.output_dispatch import RecipientState, SendStyle
 from gui_san_luong.services.output_image import OutputImageError, render_output_images
+from gui_san_luong.services.production_review import (
+    CODE_COLUMN,
+    NAME_COLUMN,
+    FileOutcome,
+    FileStatus,
+    Issue,
+    Severity,
+    UploadCandidate,
+    column_options,
+    combine_outputs,
+    count_text,
+    credit_result,
+    deduplicate,
+    extra_labels,
+    file_status,
+    general_issues,
+    issues_for_day,
+    needs_attention,
+    preview_rows,
+    read_settings_signature,
+    record_changes,
+)
 from gui_san_luong.services.worker_output import (
-    CompanyShare,
-    CreditedOutput,
-    CreditProblem,
     EmployeeDay,
-    IncompleteIdentity,
     TextStyle,
     WorkerOutput,
     available_days,
     build_messages,
-    credit_workers,
-    find_day_overlaps,
-    find_incomplete_identities,
-    find_name_conflicts,
     format_line,
     format_quantity,
     group_by_department,
-    is_slot_mapped,
     summarize_day,
 )
 from gui_san_luong.services.zalo_links import ZaloLinkStorageError, load_links
@@ -88,7 +91,11 @@ from gui_san_luong.ui.zalo_messages_page import render_zalo_messages
 from gui_san_luong.ui.zalo_token_section import render_token_warning
 
 PREVIEW_TABLE_ROWS = 200
-SAMPLE_WIDTH = 24
+SEVERITY_ICONS = {
+    Severity.ERROR: ":material/error:",
+    Severity.WARNING: ":material/warning:",
+    Severity.INFO: ":material/info:",
+}
 NOT_SELECTED = -1
 SEND_DAY_KEY = "send_day"
 SELECT_ALL_KEY = "select_all"
@@ -103,8 +110,6 @@ CHANGED_COLUMN = "Vừa sửa"
 HANDLED_COLUMN = "Đã xử lý"
 CHANGES_TABLE_HEIGHT = 300
 SEND_COLUMN = "Gửi"
-CODE_COLUMN = "Mã NV"
-NAME_COLUMN = "Họ tên"
 OUTPUT_COLUMN = "Sản lượng trong ngày"
 DEPARTMENTS_COLUMN = "Công đoạn trong kỳ"
 TRANSFERRED_COLUMN = "Đổi công đoạn"
@@ -162,48 +167,7 @@ class UploadedWorkbook(Protocol):
     def getvalue(self) -> bytes: ...
 
 
-@dataclass(frozen=True)
-class FileOutcome:
-    file_name: str
-    result: ImportResult | None = None
-    credited: CreditedOutput | None = None
-    # Why this file is left out of the employee summary.
-    excluded_because: str | None = None
-    template_label: str = ""
-    sheet: str = ""
-    template_key: str = ""
-    file_digest: str = ""
-    # How the file was read; a new reading of the same file is not an edit of its figures.
-    read_settings: str = ""
-
-
-class Severity(StrEnum):
-    # Output would be wrong or reach nobody.
-    ERROR = "error"
-    # Output may be wrong; worth a look before sending.
-    WARNING = "warning"
-    # Nothing is wrong; shown so the operator knows.
-    INFO = "info"
-
-
-SEVERITY_ICONS = {
-    Severity.ERROR: ":material/error:",
-    Severity.WARNING: ":material/warning:",
-    Severity.INFO: ":material/info:",
-}
-
-
-@dataclass(frozen=True)
-class Issue:
-    severity: Severity
-    title: str
-    detail: str
-    rows: tuple[dict[str, Any], ...] = ()
-
-
-def _count(number: int) -> str:
-    """Vietnamese thousands separator, matching the numbers in the messages."""
-    return f"{number:,}".replace(",", ".")
+_count = count_text
 
 
 def _session_cache(name: str) -> dict[Hashable, Any]:
@@ -314,33 +278,15 @@ def _read_once[T](key: str, busy: BusyScreen, message: str, read: Callable[[], T
     return cached(import_cache_path(), key, read_with_notice)
 
 
-def _sample_value(preview: SheetPreview, column: int, start_row: int) -> str:
-    for row in preview.rows[start_row - 1 :]:
-        if column < len(row) and row[column] not in (None, ""):
-            value = row[column]
-            text = (
-                value.strftime("%d/%m/%Y")
-                if isinstance(value, datetime)
-                else str(value)
-            )
-            return text[:SAMPLE_WIDTH]
-    return ""
-
-
 def _column_options(
     preview: SheetPreview, layout: SheetLayout, start_row: int
 ) -> dict[int, str]:
-    width = max((len(row) for row in preview.rows), default=0)
-    matched = {match.column for match in layout.matches.values()}
     options = {NOT_SELECTED: "(Không lấy)"}
-    for column in range(width):
-        header = layout.headers.get(column, "")
-        sample = _sample_value(preview, column, start_row)
-        if header or sample or column in matched:
-            example = f"  ·  vd: {sample}" if sample else ""
-            options[column] = (
-                f"{column_letter(column)} — {header or '(không tiêu đề)'}{example}"
-            )
+    for option in column_options(preview, layout, start_row):
+        example = f"  ·  vd: {option.sample}" if option.sample else ""
+        options[option.column] = (
+            f"{option.letter} — {option.header or '(không tiêu đề)'}{example}"
+        )
     return options
 
 
@@ -427,27 +373,6 @@ def _select_mapping(
     return mapping
 
 
-def _display_rows(
-    result: ImportResult, template: ReportTemplate, extra_labels: list[str]
-) -> list[dict[str, Any]]:
-    table = []
-    for row in result.rows[:PREVIEW_TABLE_ROWS]:
-        shown: dict[str, Any] = {"Dòng Excel": row[ROW_KEY]}
-        for spec in template.fields:
-            if spec.key in row:
-                value = row[spec.key]
-                # Codes mix numbers and text ("002960", "cty"); a table column needs one type.
-                if spec.kind is FieldKind.CODE and value is not None:
-                    value = str(value)
-                shown[spec.label] = value
-        for label in extra_labels:
-            shown[label] = None if row[label] is None else str(row[label])
-        if template.duplicate_key:
-            shown["Tính vào tổng"] = row[COUNTED_KEY]
-        table.append(shown)
-    return table
-
-
 def _date_columns(template: ReportTemplate) -> dict[str, Any]:
     label = template.field(template.date_field).label
     return {label: st.column_config.DateColumn(label, format="DD/MM/YYYY")}
@@ -522,46 +447,10 @@ def _show_result(
         result.groups, hide_index=True, width="stretch", column_config=columns
     )
     details.dataframe(
-        _display_rows(result, template, extra_labels),
+        preview_rows(result, template, extra_labels, PREVIEW_TABLE_ROWS),
         hide_index=True,
         width="stretch",
         column_config=columns,
-    )
-
-
-def _credit(
-    result: ImportResult,
-    template: ReportTemplate,
-    mapping: dict[str, int],
-    file_name: str,
-    sheet: str,
-) -> FileOutcome:
-    slots = template.worker_slots
-    unmapped = [slot.role for slot in slots if not is_slot_mapped(slot, mapping)]
-    if len(unmapped) == len(slots):
-        reason = "sheet đang chọn không có cột mã số nhân viên hoặc số lượng"
-        st.warning(
-            f"File này chưa vào được tổng hợp nhân viên: {reason}.",
-            icon=":material/warning:",
-        )
-        return FileOutcome(
-            file_name,
-            result,
-            excluded_because=reason,
-            template_label=template.label,
-            sheet=sheet,
-        )
-    if unmapped:
-        st.warning(
-            "Chưa đủ cột nên không tính phần của: " + ", ".join(unmapped),
-            icon=":material/warning:",
-        )
-    return FileOutcome(
-        file_name,
-        result,
-        credit_workers(result, template, mapping, file_name),
-        template_label=template.label,
-        sheet=sheet,
     )
 
 
@@ -624,14 +513,11 @@ def _render_file(file: UploadedWorkbook, busy: BusyScreen) -> FileOutcome:
 
     layout = analyze_sheet(preview, template, start_row)
     options = _column_options(preview, layout, start_row)
-    needs_attention = any(
-        spec.required and layout.matches[spec.key].status is not MatchStatus.AUTO
-        for spec in template.fields
-    )
+    attention = needs_attention(template, layout)
     with st.expander(
-        "Cột lấy số liệu" + (" — cần chọn lại" if needs_attention else ""),
-        expanded=needs_attention,
-        icon=":material/warning:" if needs_attention else ":material/view_column:",
+        "Cột lấy số liệu" + (" — cần chọn lại" if attention else ""),
+        expanded=attention,
+        icon=":material/warning:" if attention else ":material/view_column:",
     ):
         st.caption(
             "Cột được tự nhận theo tiêu đề nên vẫn đúng khi bị xê dịch. "
@@ -648,12 +534,7 @@ def _render_file(file: UploadedWorkbook, busy: BusyScreen) -> FileOutcome:
             format_func=options.__getitem__,
             key=f"extras:{scope}",
         )
-    extras = {
-        f"{column_letter(column)} — {layout.headers.get(column, '')}".strip(
-            " —"
-        ): column
-        for column in extra_columns
-    }
+    extras = extra_labels(extra_columns, layout)
 
     columns_used = list(mapping.values())
     if len(columns_used) != len(set(columns_used)):
@@ -669,12 +550,8 @@ def _render_file(file: UploadedWorkbook, busy: BusyScreen) -> FileOutcome:
         tuple(sorted(extras)),
     )
 
-    settings = (
-        preview.name,
-        template.key,
-        start_row,
-        tuple(sorted(mapping.items())),
-        tuple(sorted(extras.items())),
+    settings = read_settings_signature(
+        preview.name, template, start_row, mapping, extras
     )
 
     def read() -> ImportResult:
@@ -696,7 +573,14 @@ def _render_file(file: UploadedWorkbook, busy: BusyScreen) -> FileOutcome:
             sheet=preview.name,
         )
 
-    outcome = _credit(result, template, mapping, file.name, preview.name)
+    outcome = credit_result(result, template, mapping, file.name, preview.name)
+    if outcome.excluded_because:
+        st.warning(
+            f"File này chưa vào được tổng hợp nhân viên: {outcome.excluded_because}.",
+            icon=":material/warning:",
+        )
+    for warning in outcome.warnings:
+        st.warning(warning, icon=":material/warning:")
     _show_result(result, template, list(extras))
     return replace(
         outcome,
@@ -706,42 +590,34 @@ def _render_file(file: UploadedWorkbook, busy: BusyScreen) -> FileOutcome:
     )
 
 
+@dataclass(frozen=True)
+class _Candidate(UploadCandidate):
+    file: UploadedWorkbook
+
+
 def _keep_unique_files(
     files: Sequence[UploadedWorkbook],
 ) -> list[UploadedWorkbook]:
     """The same workbook uploaded twice would double everyone's output."""
-    unique: dict[str, UploadedWorkbook] = {}
-    for file in files:
-        if file.size > MAX_FILE_BYTES:
-            limit = MAX_FILE_BYTES // (1024 * 1024)
-            st.error(
-                f"Bỏ qua {file.name}: file vượt quá {limit} MB.",
-                icon=":material/error:",
-            )
-            continue
-        digest = _file_digest(file)
-        if digest in unique:
-            st.warning(
-                f"Bỏ qua {file.name}: trùng nội dung với {unique[digest].name}.",
-                icon=":material/warning:",
-            )
-            continue
-        unique[digest] = file
-    return list(unique.values())
+    candidates = [
+        _Candidate(file.name, file.size, _file_digest(file), file) for file in files
+    ]
+    kept, skipped = deduplicate(candidates)
+    for item in skipped:
+        st.warning(f"Bỏ qua {item.name}: {item.reason}.", icon=":material/warning:")
+    return [candidate.file for candidate in kept]
+
+
+FILE_STATUS_ICONS = {
+    FileStatus.READY: "✅",
+    FileStatus.CHECK: "⚠️",
+    FileStatus.EXCLUDED: "⛔",
+}
 
 
 def _file_state(outcome: FileOutcome) -> str:
-    if outcome.excluded_because:
-        return f"⛔ Chưa tính: {outcome.excluded_because.rstrip('.')}"
-    result = outcome.result
-    if result is None:
-        return "⛔ Chưa đọc được"
-    notes = []
-    if result.rejected:
-        notes.append(f"{_count(len(result.rejected))} dòng lỗi")
-    if any(total.matches_stated is False for total in result.totals):
-        notes.append("lệch tổng trong file")
-    return "⚠️ " + ", ".join(notes) if notes else "✅ Sẵn sàng"
+    status, text = file_status(outcome)
+    return f"{FILE_STATUS_ICONS[status]} {text}"
 
 
 def _show_file_status(outcomes: list[FileOutcome]) -> None:
@@ -786,186 +662,6 @@ def _load_roster(file: UploadedWorkbook, busy: BusyScreen) -> Roster | None:
 # ---------------------------------------------------------------- problems to check
 
 
-def _incomplete_identities_issue(people: list[IncompleteIdentity]) -> Issue | None:
-    if not people:
-        return None
-    without_code = sum(person.missing_code for person in people)
-    title = f"{_count(len(people))} người chưa có đủ họ tên hoặc mã số"
-    if without_code:
-        title += f" ({_count(without_code)} người thiếu mã, không nhận được sản lượng)"
-    return Issue(
-        Severity.ERROR if without_code else Severity.WARNING,
-        title,
-        "Tính trên mọi file và mọi ngày. Người thiếu mã số không nhận được sản lượng; "
-        "người chỉ có tên gọi tắt vẫn nhận được nhưng khó kiểm tra đúng người. "
-        "Họ tên đã được tra theo mã số trong sheet BANG CONG (hoặc BCC) của mỗi file; "
-        "người ở đây chưa có trong sheet đó. Hãy bổ sung trong file Excel rồi tải lại.",
-        tuple(
-            {
-                CODE_COLUMN: person.employee_code or "",
-                "Tên trong file": person.employee_name,
-                "Thiếu": " và ".join(
-                    part
-                    for part, missing in (
-                        ("mã số", person.missing_code),
-                        ("họ tên đầy đủ", person.missing_full_name),
-                    )
-                    if missing
-                ),
-                "Bộ phận": ", ".join(person.departments),
-                "File": ", ".join(person.sources),
-                "Số dòng": person.excel_rows,
-            }
-            for person in people
-        ),
-    )
-
-
-def _roster_issues(rosters: dict[str, Roster | None]) -> list[Issue]:
-    issues = [
-        Issue(
-            Severity.WARNING,
-            f"Sheet {roster.sheet} của {name} ghi hai họ tên cho mã "
-            + ", ".join(roster.conflicting_codes),
-            f"Sheet {roster.sheet} ghi hai họ tên khác nhau cho cùng một mã, nên chưa dùng "
-            "họ tên của mã này. Hãy sửa cho thống nhất rồi tải lại file.",
-        )
-        for name, roster in sorted(rosters.items())
-        if roster and roster.conflicting_codes
-    ]
-    missing = sorted(name for name, roster in rosters.items() if roster is None)
-    if missing:
-        sheets = " hoặc ".join(name.upper() for name in ROSTER_SHEETS)
-        issues.append(
-            Issue(
-                Severity.INFO,
-                f"{_count(len(missing))} file không có sheet {sheets} để tra họ tên",
-                ", ".join(missing),
-            )
-        )
-    return issues
-
-
-def _file_issues(outcomes: list[FileOutcome]) -> list[Issue]:
-    issues = []
-    for outcome in outcomes:
-        if outcome.excluded_because:
-            reason = outcome.excluded_because.rstrip(".")
-            issues.append(
-                Issue(
-                    Severity.ERROR,
-                    f"Chưa tính file {outcome.file_name}",
-                    f"Lý do: {reason}. Hãy chỉnh ở phần 1.",
-                )
-            )
-            continue
-        if outcome.result is None:
-            continue
-        if outcome.result.rejected:
-            issues.append(
-                Issue(
-                    Severity.ERROR,
-                    f"{outcome.file_name}: {_count(len(outcome.result.rejected))} dòng lỗi "
-                    "chưa được tính",
-                    "Hãy sửa trong file Excel rồi tải lại.",
-                    tuple(
-                        {"Dòng Excel": item.row, "Lý do": item.reason}
-                        for item in outcome.result.rejected
-                    ),
-                )
-            )
-        mismatched = [
-            total.label
-            for total in outcome.result.totals
-            if total.matches_stated is False
-        ]
-        if mismatched:
-            issues.append(
-                Issue(
-                    Severity.WARNING,
-                    f"{outcome.file_name}: lệch với tổng trong file",
-                    f"Các cột bị lệch: {', '.join(mismatched)}. "
-                    "Xem chi tiết trong tab của file ở phần 1.",
-                )
-            )
-    return issues
-
-
-def _day_issues(
-    outputs: list[WorkerOutput], problems: list[CreditProblem], day: date
-) -> list[Issue]:
-    issues = [
-        Issue(
-            Severity.WARNING,
-            f"Bộ phận {department} có số liệu ngày này ở nhiều file",
-            "Sản lượng đang được cộng từ tất cả các file: " + ", ".join(sources),
-        )
-        for department, sources in find_day_overlaps(outputs, day).items()
-    ]
-
-    day_problems = [problem for problem in problems if problem.day == day]
-    if day_problems:
-        issues.append(
-            Issue(
-                Severity.ERROR,
-                f"{_count(len(day_problems))} phần sản lượng ngày này chưa gán được "
-                "cho nhân viên",
-                "Các phần này không có trong danh sách gửi bên dưới.",
-                tuple(
-                    {
-                        "File": problem.source,
-                        "Dòng Excel": problem.excel_row,
-                        "Lý do": problem.reason,
-                    }
-                    for problem in day_problems
-                ),
-            )
-        )
-
-    conflicts = find_name_conflicts(outputs)
-    if conflicts:
-        issues.append(
-            Issue(
-                Severity.WARNING,
-                f"{_count(len(conflicts))} mã số gắn với nhiều họ tên khác nhau",
-                "Có thể chỉ là gõ khác nhau, nhưng cũng có thể hai người dùng chung mã nên "
-                "sản lượng bị gộp. Hãy kiểm tra trước khi gửi.",
-                tuple(
-                    {
-                        CODE_COLUMN: code,
-                        NAME_COLUMN: variant.name,
-                        "Bộ phận": ", ".join(variant.departments),
-                        "File Excel": ", ".join(variant.sources),
-                    }
-                    for code, variants in sorted(conflicts.items())
-                    for variant in variants
-                ),
-            )
-        )
-    return issues
-
-
-def _company_share_issue(shares: list[CompanyShare], day: date) -> Issue | None:
-    day_shares = [share for share in shares if share.day == day]
-    if not day_shares:
-        return None
-    return Issue(
-        Severity.INFO,
-        f"{_count(len(day_shares))} phần ghi cho công ty, không gửi cho ai",
-        "Vẫn được tính trong tổng của file.",
-        tuple(
-            {
-                "File": share.source,
-                "Dòng Excel": share.excel_row,
-                "Công đoạn": share.department,
-                "Số lượng": format_quantity(share.quantity),
-                "Đơn vị": share.unit or "",
-            }
-            for share in day_shares
-        ),
-    )
-
-
 def _show_issues(issues: list[Issue]) -> None:
     order = list(Severity)
     issues = sorted(issues, key=lambda issue: order.index(issue.severity))
@@ -1001,39 +697,16 @@ def _show_issues(issues: list[Issue]) -> None:
 def _track_changes(outcomes: list[FileOutcome], outputs: list[WorkerOutput]) -> None:
     """Compare each uploaded report with its last version and announce what was edited."""
     tracked: set[tuple[str, str, str]] = st.session_state.setdefault(TRACKED_KEY, set())
-    by_source: defaultdict[str, list[WorkerOutput]] = defaultdict(list)
-    for output in outputs:
-        by_source[output.source].append(output)
-    edited: list[str] = []
-    found = 0
-    for outcome in outcomes:
-        if outcome.credited is None or not outcome.file_digest:
-            continue
-        key = source_key(outcome.template_key, outcome.file_name)
-        version = (key, outcome.file_digest, outcome.read_settings)
-        if version in tracked:
-            continue
-        try:
-            recorded = record_version(
-                database_path(),
-                TrackedFile(
-                    key,
-                    outcome.file_name,
-                    outcome.file_digest,
-                    by_source[outcome.file_name],
-                ),
-            )
-        except ChangeStorageError as error:
-            st.error(str(error), icon=":material/error:")
-            return
-        tracked.add(version)
-        if recorded.outcome is VersionOutcome.CHANGED and recorded.changes:
-            found += recorded.changes
-            edited.append(outcome.file_name)
-    if found:
+    try:
+        recorded = record_changes(database_path(), outcomes, outputs, tracked)
+    except ChangeStorageError as error:
+        st.error(str(error), icon=":material/error:")
+        return
+    tracked.update(recorded.versions)
+    if recorded.changed_rows:
         st.toast(
-            f"{_count(found)} dòng sản lượng khác lần tải trước trong "
-            f"{', '.join(edited)}. Xem mục “Sản lượng vừa sửa”.",
+            f"{_count(recorded.changed_rows)} dòng sản lượng khác lần tải trước trong "
+            f"{', '.join(recorded.edited_files)}. Xem mục “Sản lượng vừa sửa”.",
             icon=":material/edit_note:",
             duration="long",
         )
@@ -1471,32 +1144,11 @@ def _links() -> dict[str, str]:
 def _render_summary(
     outcomes: list[FileOutcome], rosters: dict[str, Roster | None]
 ) -> list[WorkerOutput]:
-    outputs = fill_full_names(
-        (
-            output
-            for outcome in outcomes
-            if outcome.credited
-            for output in outcome.credited.outputs
-        ),
-        {name: roster for name, roster in rosters.items() if roster},
-    )
+    combined = combine_outputs(outcomes, rosters)
+    outputs = combined.outputs
     _track_changes(outcomes, outputs)
     changes = _load_changes()
     _show_changes(changes)
-    problems = [
-        problem
-        for outcome in outcomes
-        if outcome.credited
-        for problem in outcome.credited.problems
-    ]
-    issues = [
-        *_file_issues(outcomes),
-        *_roster_issues(rosters),
-    ]
-    if incomplete := _incomplete_identities_issue(
-        find_incomplete_identities(outputs, problems)
-    ):
-        issues.append(incomplete)
 
     st.divider()
     _step(
@@ -1511,7 +1163,7 @@ def _render_summary(
             "Chưa có sản lượng nào gán được cho nhân viên. Hãy xem tình trạng file ở phần 1.",
             icon=":material/info:",
         )
-        _show_issues(issues)
+        _show_issues(general_issues(outcomes, rosters, combined))
         return outputs
 
     day_col, _ = st.columns([1, 3])
@@ -1520,25 +1172,13 @@ def _render_summary(
     if day is None:
         return outputs
 
-    issues.extend(_day_issues(outputs, problems, day))
-    if company := _company_share_issue(
-        [
-            share
-            for outcome in outcomes
-            if outcome.credited
-            for share in outcome.credited.company_shares
-        ],
-        day,
-    ):
-        issues.append(company)
-
     st.divider()
     _step(
         3,
         "Kiểm tra trước khi gửi",
         "Những điểm có thể làm sai số liệu hoặc gửi nhầm người. Bấm vào từng mục để xem chi tiết.",
     )
-    _show_issues(issues)
+    _show_issues(issues_for_day(outcomes, rosters, combined, day))
 
     st.divider()
     _step(
