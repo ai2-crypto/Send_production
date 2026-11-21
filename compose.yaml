@@ -1,23 +1,58 @@
 # Dùng làm "Dự án" (Project) trong Container Manager của DSM, hoặc `docker compose up -d`.
 # Không có mục build: Container Manager build bằng BuildKit, mà BuildKit lỗi seccomp trên
 # Synology. Build image trước qua SSH: sudo DOCKER_BUILDKIT=0 docker build -t gui-san-luong:latest .
+#
+# Hai container dùng chung một image, thư mục data (SQLite) và .env:
+#   gui-san-luong      trang web Streamlit, cổng 8900
+#   gui-san-luong-api  API cho frontend khác, cổng 8800 (tài liệu: /api/v1/docs)
+# Cả hai chưa có đăng nhập: chỉ mở trong mạng nội bộ, không mở các cổng này ra Internet
+# (không port-forward trên router, không gắn vào reverse proxy công khai).
+x-common: &common
+  image: gui-san-luong:latest
+  # Image chỉ có trên NAS, không tải từ Docker Hub.
+  pull_policy: never
+  restart: unless-stopped
+  # Tài khoản chạy trong container phải ghi được thư mục ./data. Mặc định 1000:1000;
+  # trên DSM đặt PUID/PGID trong .env bằng UID:GID của tài khoản sở hữu thư mục (`id <tên>`).
+  user: "${PUID:-1000}:${PGID:-1000}"
+  volumes:
+    # SQLite (gui_san_luong.db, import_cache.db) nằm ở đây, giữ lại khi cập nhật image.
+    - ./data:/app/data
+    # .env được đọc lại mỗi lần dùng: đổi cấu hình không cần khởi động lại.
+    - ./.env:/app/.env:ro
+
 services:
   gui-san-luong:
-    image: gui-san-luong:latest
-    # Image chỉ có trên NAS, không tải từ Docker Hub.
-    pull_policy: never
+    <<: *common
     container_name: gui-san-luong
-    restart: unless-stopped
-    # Trang chưa có đăng nhập: chỉ mở trong mạng nội bộ, không mở port này ra Internet
-    # (không port-forward trên router, không gắn vào reverse proxy công khai).
     ports:
       # Cổng NAS 8900 → cổng 8900 của Streamlit trong container (đặt trong Dockerfile).
       - "8900:8900"
-    # Tài khoản chạy trong container phải ghi được thư mục ./data. Mặc định 1000:1000;
-    # trên DSM có thể đổi thành UID:GID của tài khoản sở hữu thư mục (lệnh `id <tên>`).
-    user: "${PUID:-1000}:${PGID:-1000}"
-    volumes:
-      # SQLite (gui_san_luong.db, import_cache.db) nằm ở đây, giữ lại khi cập nhật image.
-      - ./data:/app/data
-      # .env được đọc lại mỗi lần dùng: thay ZALO_OA_ACCESS_TOKEN không cần khởi động lại.
-      - ./.env:/app/.env:ro
+
+  gui-san-luong-api:
+    <<: *common
+    container_name: gui-san-luong-api
+    # Một tiến trình: các lượt tải file được giữ trong bộ nhớ của tiến trình đó.
+    command:
+      - python
+      - -m
+      - uvicorn
+      - gui_san_luong.api.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8800"
+      - --workers
+      - "1"
+    ports:
+      - "8800:8800"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/api/v1/health', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

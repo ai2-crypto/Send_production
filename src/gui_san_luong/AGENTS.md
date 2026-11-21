@@ -37,8 +37,9 @@ Zalo OpenAPI <──> worker ───────────┘
 | `ui` | Giao diện, xác thực người dùng nội bộ, tạo lô gửi vào hàng đợi | Gọi trực tiếp API gửi tin; làm mới token |
 | `webhook` | Nhận sự kiện, kiểm tra chữ ký, lưu DB; nhận OAuth callback | Gọi API Zalo trong lúc xử lý sự kiện |
 | `worker` | Làm mới token, gửi tin từ hàng đợi, đồng bộ người dùng và tin nhắn | Hiển thị giao diện |
+| `api` | API HTTP/JSON cho frontend khác (`api/`, FastAPI, cổng 8800): mọi chức năng của `ui` | Chứa logic nghiệp vụ riêng: gọi cùng `services` với `ui` |
 
-Chỉ dùng FastAPI cho endpoint hạ tầng ở trên; toàn bộ giao diện dùng Streamlit.
+Giao diện người dùng của dự án dùng Streamlit. FastAPI dùng cho endpoint hạ tầng ở trên và cho `api/`, API cho một frontend khác (người dùng yêu cầu 2026-11-21; đặc tả ở `docs/API.md`, `docs/openapi.json`). Logic nghiệp vụ dùng chung nằm trong `services` (ví dụ `services/production_review.py` cho việc đọc file và kiểm tra, `services/zalo_texts.py` cho câu báo lỗi Zalo): `ui` và `api` chỉ vẽ hoặc chuyển dữ liệu, không lặp logic. Sửa API thì sinh lại `docs/openapi.json` và cập nhật `docs/API.md`.
 
 ### Cấu trúc thư mục
 
@@ -63,7 +64,7 @@ Chỉ dùng FastAPI cho endpoint hạ tầng ở trên; toàn bộ giao diện d
 └── tests/                  # unit/, integration/
 ```
 
-**Chiều phụ thuộc:** `ui | webhook | worker → services → domain`, và `services → db | zalo`. Không viết SQL hoặc gọi HTTP trong `ui`.
+**Chiều phụ thuộc:** `ui | api | webhook | worker → services → domain`, và `services → db | zalo`. Không viết SQL hoặc gọi HTTP trong `ui`.
 
 ### Thư viện
 
@@ -244,6 +245,7 @@ pending → sending → sent
 
 ### Kiểm soát truy cập
 
+- API (`api/`) chưa có xác thực, theo quyết định của người dùng 2026-11-21: chỉ chạy trong mạng nội bộ, không mở cổng 8800 ra Internet. Mọi lệnh gửi tin qua API phải kèm `confirmation` lấy từ kế hoạch gửi (hoặc `confirm: true` với tin thử), để không gửi khi danh sách hay nội dung đã đổi. Khi thêm đăng nhập, áp dụng cho cả `ui` và `api`.
 - Giao diện Streamlit bắt buộc đăng nhập. Ưu tiên `st.login` với nhà cung cấp OIDC của công ty; nếu không có, dùng mật khẩu băm bằng Argon2. Không mở trực tiếp ra Internet khi chưa có đăng nhập và HTTPS.
 - Có hai vai trò: `operator` (nhập và gửi báo cáo) và `admin` (thêm vai trò, quản lý người nhận, cấp quyền OA).
 - **Chỉ gửi số liệu cho người có `is_allowed = true`,** do admin duyệt. Không bao giờ tự động thêm người quan tâm OA, vì ai cũng có thể quan tâm một OA.

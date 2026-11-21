@@ -78,3 +78,13 @@ def zalo_secret_key() -> str:
 def token_encryption_key() -> str:
     """The Fernet key that encrypts the stored OA tokens."""
     return setting(TOKEN_ENCRYPTION_KEY_VARIABLE)
+
+
+API_CORS_ORIGINS_VARIABLE = "API_CORS_ORIGINS"
+
+
+def api_cors_origins() -> list[str]:
+    """Frontend origins allowed to call the API, comma-separated; every origin when unset."""
+    configured = setting(API_CORS_ORIGINS_VARIABLE)
+    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return origins or ["*"]

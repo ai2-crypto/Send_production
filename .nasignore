@@ -25,6 +25,7 @@ CLAUDE.md
 
 # Test và dữ liệu thật (file Excel, DB) không cần để chạy
 tests/
+docs/
 data/
 *.db
 *.db-*

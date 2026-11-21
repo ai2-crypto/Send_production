@@ -14,7 +14,7 @@ Agent không có quyền vào NAS: mọi lệnh trên NAS do người dùng ch�
 | File | Vai trò |
 | --- | --- |
 | `Dockerfile` | Nhiều tầng, không dùng `RUN --mount` hay `# syntax=` (xem ràng buộc 1). Streamlit chạy cổng 8900, uid mặc định 1000, phông DejaVu cho ảnh màu |
-| `compose.yaml` | Không có mục `build`, `pull_policy: never`, cổng `8900:8900`, `user: "${PUID:-1000}:${PGID:-1000}"`, gắn `./data` và `./.env:ro` |
+| `compose.yaml` | Hai service cùng image: `gui-san-luong` (Streamlit, cổng 8900) và `gui-san-luong-api` (FastAPI, cổng 8800, `--workers 1` vì lượt tải file giữ trong bộ nhớ, healthcheck `/api/v1/health`). Không có mục `build`, `pull_policy: never`, cổng `8900:8900`, `user: "${PUID:-1000}:${PGID:-1000}"`, gắn `./data` và `./.env:ro` |
 | `.dockerignore` | Không cho `.env`, DB, `data`, `tests`, `.claude` vào image |
 | `.nasignore` | Những gì không tải lên NAS (`.venv`, file AI, `.git`, `tests`, `data`, `.env`...) |
 | `scripts/prepare_nas.ps1` | Tạo bản sạch trong `deploy\gui-san-luong` theo `.nasignore`, kèm thư mục `data` rỗng. File phải lưu UTF-8 **có BOM**, vì Windows PowerShell 5.1 đọc sai tiếng Việt khi không có BOM |

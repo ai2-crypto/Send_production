@@ -15,7 +15,6 @@ from gui_san_luong.services.zalo_texts import error_text
 from gui_san_luong.services.zalo_token import TokenSetupError, TokenStorageError
 from gui_san_luong.zalo.errors import ZaloAuthError, ZaloError, ZaloRateLimitError
 
-
 # Each service raises its own when SQLite fails; all mean the same to a caller.
 STORAGE_ERRORS: tuple[type[Exception], ...] = (
     ChangeStorageError,

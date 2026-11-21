@@ -12,11 +12,21 @@ Tải nhiều file Excel, mỗi file có một tab để chọn sheet và cột.
 
 Tab “Nối Zalo” dùng để nhập Zalo user id cho từng mã nhân viên. Dữ liệu lưu ở file SQLite `data/gui_san_luong.db`, đổi được bằng biến môi trường `GUI_SAN_LUONG_DB`.
 
+## API cho frontend khác
+
+Mọi chức năng của trang web cũng có qua API HTTP/JSON (FastAPI), để tích hợp vào một frontend khác. Đặc tả và hướng dẫn tích hợp: [docs/API.md](docs/API.md); đặc tả OpenAPI: [docs/openapi.json](docs/openapi.json). Khi API chạy, tài liệu tương tác ở `/api/v1/docs`.
+
+```bash
+uv run python -m uvicorn gui_san_luong.api.app:app --host 127.0.0.1 --port 8800
+```
+
+API chưa có đăng nhập (người dùng chọn 2026-11-21): ai vào được cổng 8800 đều gửi được tin Zalo, nên chỉ dùng trong mạng nội bộ. Origin của frontend đặt ở `API_CORS_ORIGINS` trong `.env`. Trang web và API dùng chung DB, nên thao tác ở bên này hiện ở bên kia.
+
 ## Chạy bằng Docker trên NAS Synology (DSM 7.3)
 
-Image gồm [Dockerfile](Dockerfile) (nhiều tầng, chạy bằng tài khoản không phải root) và [compose.yaml](compose.yaml). File `.env`, DB và file Excel thật không bao giờ được đóng vào image (xem [.dockerignore](.dockerignore)).
+Image gồm [Dockerfile](Dockerfile) (nhiều tầng, chạy bằng tài khoản không phải root) và [compose.yaml](compose.yaml). Compose chạy hai container từ cùng một image, dùng chung `data` và `.env`: `gui-san-luong` (trang web, cổng 8900) và `gui-san-luong-api` (API, cổng 8800). File `.env`, DB và file Excel thật không bao giờ được đóng vào image (xem [.dockerignore](.dockerignore)).
 
-> Trang chưa có đăng nhập. Chỉ mở cổng 8900 trong mạng nội bộ: không port-forward trên router, không gắn vào reverse proxy hay QuickConnect công khai.
+> Trang và API chưa có đăng nhập. Chỉ mở cổng 8900 và 8800 trong mạng nội bộ: không port-forward trên router, không gắn vào reverse proxy hay QuickConnect công khai.
 
 Image được build ngay trên NAS qua SSH, nên không cần chép file image nào. **Trên Synology phải build bằng trình build cũ (`DOCKER_BUILDKIT=0`), không dùng được BuildKit:** nhân Linux của NAS không có seccomp, nên mọi bước `RUN` dưới BuildKit đều lỗi `seccomp: config provided but seccomp not supported`. Cũng vì vậy `compose.yaml` không có mục `build`, để Container Manager không tự build bằng BuildKit.
 
@@ -115,7 +125,7 @@ Làm qua SSH (bật ở **Bảng điều khiển → Terminal & SNMP**), trong t
    cd /volume1/docker/gui-san-luong && sudo docker compose up -d --force-recreate
    ```
 
-Chỉ sửa `compose.yaml` hoặc `.env` thì không cần build lại. Đổi cổng: sửa số bên trái trong `"8900:8900"` của `compose.yaml` rồi `docker compose up -d` (Streamlit trong container chạy ở 8900, đặt trong `Dockerfile`). Đổi token Zalo hay `ZALO_*` trong `.env` chỉ cần tải lại trang: ứng dụng đọc lại `.env` mỗi lần dùng.
+Lệnh trên chạy lại cả hai container (trang web và API). Chỉ sửa `compose.yaml` hoặc `.env` thì không cần build lại. Đổi cổng: sửa số bên trái trong `"8900:8900"` của `compose.yaml` rồi `docker compose up -d` (Streamlit trong container chạy ở 8900, đặt trong `Dockerfile`). Đổi token Zalo hay `ZALO_*` trong `.env` chỉ cần tải lại trang: ứng dụng đọc lại `.env` mỗi lần dùng.
 
 Ghi chú: DB SQLite nằm trong `data/` trên NAS nên giữ nguyên khi cập nhật. Token Zalo được trang tự làm mới; chỉ phải dán lại khi trang báo refresh token bị từ chối hoặc sắp hết hạn (3 tháng không dùng). Ảnh màu dùng phông DejaVu thay cho Segoe UI của Windows nên chữ hơi khác.
 
@@ -126,6 +136,8 @@ Container chạy đúng tài khoản, ghi được `data`, đọc được `.env
 ```bash
 sudo docker exec gui-san-luong sh -c 'id; touch /app/data/_t && echo GHI_DUOC && rm /app/data/_t; test -r /app/.env && echo DOC_DUOC_ENV'
 ```
+
+API: `curl http://127.0.0.1:8800/api/v1/health` trên NAS phải ra `{"status":"ok"}`; log xem bằng `sudo docker logs --tail 50 gui-san-luong-api`.
 
 Trạng thái (STATUS thành `healthy` sau khoảng 30 giây) và log (lỗi gốc của SQLite và Zalo ghi ở đây, trang chỉ hiện câu ngắn):
 
@@ -235,7 +247,7 @@ Cách sửa: trên API Explorer bấm **“Lấy Access Token” một lần**, 
 
 #### Không mở được `http://<IP-NAS>:8900`
 
-Xem `sudo docker ps --filter name=gui-san-luong` (phải `Up ... (healthy)`) và log. Container chạy mà vẫn không vào được: cho phép cổng 8900 trong mạng nội bộ ở **Bảng điều khiển → Bảo mật → Tường lửa**. Không mở cổng này ra Internet.
+Xem `sudo docker ps --filter name=gui-san-luong` (cả hai container phải `Up ... (healthy)`) và log. Container chạy mà vẫn không vào được: cho phép cổng 8900 (và 8800 cho API) trong mạng nội bộ ở **Bảng điều khiển → Bảo mật → Tường lửa**. Không mở cổng này ra Internet.
 
 ## Thử nghiệm với file Excel thật
 

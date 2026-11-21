@@ -149,7 +149,8 @@ def import_out(session: ImportSession) -> ImportOut:
         expires_after_minutes=int(IMPORT_TTL.total_seconds() // 60),
         files=[file_summary(stored) for stored in session.files.values()],
         skipped=[
-            SkippedFileOut(name=item.name, reason=item.reason) for item in session.skipped
+            SkippedFileOut(name=item.name, reason=item.reason)
+            for item in session.skipped
         ],
         days=available_days(session.combined().outputs),
         changed_rows=session.changed_rows,

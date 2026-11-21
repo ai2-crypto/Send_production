@@ -1,0 +1,3845 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gửi sản lượng API",
+    "description": "Đọc file Excel sản lượng, kiểm tra, xem trước và gửi cho từng nhân viên qua Zalo OA. Mọi chức năng của trang web Streamlit. Chưa có xác thực: chỉ dùng trong mạng nội bộ.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "Chung"
+        ],
+        "summary": "Máy chủ đang chạy",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "tags": [
+          "Chung"
+        ],
+        "summary": "Các loại báo cáo và trường dữ liệu của từng loại",
+        "operationId": "templates_api_v1_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Template"
+                  },
+                  "type": "array",
+                  "title": "Response Templates Api V1 Templates Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports": {
+      "post": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Tải các file Excel sản lượng lên",
+        "operationId": "create_import_api_v1_imports_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_import_api_v1_imports_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Tình trạng một lượt tải file",
+        "operationId": "get_import_api_v1_imports__import_id__get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Bỏ lượt tải file (xóa khỏi bộ nhớ máy chủ)",
+        "operationId": "delete_import_api_v1_imports__import_id__delete",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/files/{file_id}": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Cách đọc và kết quả đọc một file",
+        "operationId": "get_file_api_v1_imports__import_id__files__file_id__get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/files/{file_id}/settings": {
+      "put": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Đổi loại báo cáo, sheet, dòng bắt đầu hoặc cột của một file",
+        "operationId": "update_file_settings_api_v1_imports__import_id__files__file_id__settings_put",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/issues": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Những điểm cần kiểm tra trước khi gửi",
+        "operationId": "get_issues_api_v1_imports__import_id__issues_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bỏ trống để chỉ lấy các điểm không phụ thuộc ngày.",
+              "title": "Day"
+            },
+            "description": "Bỏ trống để chỉ lấy các điểm không phụ thuộc ngày."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Nhân viên có sản lượng trong ngày, kèm tình trạng Zalo và số liệu vừa sửa",
+        "operationId": "get_day_api_v1_imports__import_id__days__day__get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/departments": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Nhân viên trong ngày theo bộ phận (để xem trước theo bộ phận)",
+        "operationId": "get_departments_api_v1_imports__import_id__days__day__departments_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DepartmentPreview"
+                  },
+                  "title": "Response Get Departments Api V1 Imports  Import Id  Days  Day  Departments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/employees/{employee_code}/messages": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Đúng các tin dạng chữ sẽ gửi cho một nhân viên",
+        "operationId": "get_messages_api_v1_imports__import_id__days__day__employees__employee_code__messages_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          },
+          {
+            "name": "employee_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessagesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/employees/{employee_code}/images": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Danh sách ảnh màu sẽ gửi cho một nhân viên",
+        "operationId": "get_images_api_v1_imports__import_id__days__day__employees__employee_code__images_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          },
+          {
+            "name": "employee_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/employees/{employee_code}/images/{index}": {
+      "get": {
+        "tags": [
+          "Sản lượng"
+        ],
+        "summary": "Tải một ảnh màu (PNG/JPEG)",
+        "operationId": "get_image_api_v1_imports__import_id__days__day__employees__employee_code__images__index__get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          },
+          {
+            "name": "employee_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Code"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {},
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/send-plan": {
+      "post": {
+        "tags": [
+          "Gửi sản lượng"
+        ],
+        "summary": "Xem trước ai sẽ được gửi, ai bị bỏ qua và lý do",
+        "operationId": "send_plan_api_v1_imports__import_id__days__day__send_plan_post",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendSelection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendPlanOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/{import_id}/days/{day}/sends": {
+      "post": {
+        "tags": [
+          "Gửi sản lượng"
+        ],
+        "summary": "Gửi sản lượng qua Zalo (không thu hồi được)",
+        "description": "Chỉ gửi cho người ở trạng thái `ready` trong kế hoạch. Phải gửi kèm `confirmation` lấy từ send-plan; danh sách hay nội dung đổi thì trả 409.",
+        "operationId": "send_api_v1_imports__import_id__days__day__sends_post",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResultsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sends/{day}": {
+      "get": {
+        "tags": [
+          "Gửi sản lượng"
+        ],
+        "summary": "Các phần tin đã gửi (hoặc không rõ) trong một ngày sản xuất",
+        "operationId": "sends_of_day_api_v1_sends__day__get",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SendRecordOut"
+                  },
+                  "title": "Response Sends Of Day Api V1 Sends  Day  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/output-changes": {
+      "get": {
+        "tags": [
+          "Sản lượng vừa sửa"
+        ],
+        "summary": "Các dòng sản lượng đã đổi và chưa đánh dấu đã xử lý",
+        "operationId": "open_changes_api_v1_output_changes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChangeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Open Changes Api V1 Output Changes Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/output-changes/handled": {
+      "post": {
+        "tags": [
+          "Sản lượng vừa sửa"
+        ],
+        "summary": "Đánh dấu đã gửi lại tin cho các dòng này",
+        "operationId": "mark_handled_api_v1_output_changes_handled_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandledIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo-links": {
+      "get": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Danh sách nối, gồm cả nhân viên trong file chưa nối",
+        "operationId": "get_links_api_v1_zalo_links_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc).",
+              "title": "Import Id"
+            },
+            "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Lưu cả bảng nối (như nút “Lưu thay đổi”)",
+        "operationId": "replace_links_api_v1_zalo_links_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinksIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkChangesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo-links/linked": {
+      "get": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Chỉ những người đã nối",
+        "operationId": "get_linked_api_v1_zalo_links_linked_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LinkOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Linked Api V1 Zalo Links Linked Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo-links/{employee_code}": {
+      "put": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Nối hoặc đổi Zalo của một nhân viên",
+        "operationId": "set_link_api_v1_zalo_links__employee_code__put",
+        "parameters": [
+          {
+            "name": "employee_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkChangesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Gỡ nối Zalo của một nhân viên",
+        "operationId": "remove_link_api_v1_zalo_links__employee_code__delete",
+        "parameters": [
+          {
+            "name": "employee_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Code"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo-links/proposals": {
+      "get": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Mã nhân viên mọi người nhắn cho OA, đề xuất để nối",
+        "description": "Dựa trên tin nhắn đã quét (POST /zalo/messages/scan). Ai cũng có thể nhắn mã của người khác: hãy so tên Zalo với họ tên trước khi áp dụng.",
+        "operationId": "get_proposals_api_v1_zalo_links_proposals_get",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc).",
+              "title": "Import Id"
+            },
+            "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo-links/proposals/apply": {
+      "post": {
+        "tags": [
+          "Nối Zalo"
+        ],
+        "summary": "Áp dụng các đề xuất đã chọn theo mã nhân viên",
+        "operationId": "apply_api_v1_zalo_links_proposals_apply_post",
+        "parameters": [
+          {
+            "name": "import_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc).",
+              "title": "Import Id"
+            },
+            "description": "Lượt tải file để thêm nhân viên trong file vào danh sách (không bắt buộc)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyProposalsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkChangesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/messages": {
+      "get": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Tin nhắn OA đã quét (lưu trên máy chủ)",
+        "description": "Trả `null` khi chưa quét lần nào. Nội dung tin là dữ liệu từ bên ngoài: frontend phải hiển thị dạng chữ thuần, không render HTML/markdown.",
+        "operationId": "get_messages_api_v1_zalo_messages_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ArchiveOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Messages Api V1 Zalo Messages Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Xóa tin nhắn đã lưu trên máy chủ",
+        "operationId": "forget_messages_api_v1_zalo_messages_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/messages/scan": {
+      "post": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Quét tin nhắn mới từ Zalo",
+        "operationId": "scan_messages_api_v1_zalo_messages_scan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/free-window": {
+      "get": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Người đã nhắn OA trong 48 giờ qua (gửi tin miễn phí)",
+        "operationId": "free_window_api_v1_zalo_free_window_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeWindowOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/test-message": {
+      "post": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Gửi một tin thử dạng chữ cho một người (không thu hồi được)",
+        "operationId": "test_message_api_v1_zalo_test_message_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestMessageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestMessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/token": {
+      "get": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Tình trạng access token Zalo (không bao giờ trả token)",
+        "operationId": "get_token_api_v1_zalo_token_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenStatusOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Lưu access token và refresh token lấy từ API Explorer, rồi làm mới ngay",
+        "description": "Không dùng refresh token này ở nơi khác: mỗi refresh token chỉ dùng được một lần. Cần ZALO_APP_ID, ZALO_SECRET_KEY, TOKEN_ENCRYPTION_KEY trong .env.",
+        "operationId": "put_token_api_v1_zalo_token_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Xóa token đã lưu",
+        "operationId": "delete_token_api_v1_zalo_token_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/zalo/token/refresh": {
+      "post": {
+        "tags": [
+          "Zalo"
+        ],
+        "summary": "Làm mới access token ngay",
+        "operationId": "refresh_token_api_v1_zalo_token_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActiveUserOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "last_interaction_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Interaction At"
+          },
+          "free_until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Free Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "employee_code",
+          "last_interaction_at",
+          "free_until"
+        ],
+        "title": "ActiveUserOut"
+      },
+      "ApplyProposalsIn": {
+        "properties": {
+          "employee_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Employee Codes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_codes"
+        ],
+        "title": "ApplyProposalsIn"
+      },
+      "ArchiveOut": {
+        "properties": {
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          },
+          "user_count": {
+            "type": "integer",
+            "title": "User Count"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "from_user_count": {
+            "type": "integer",
+            "title": "From User Count"
+          },
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationOut"
+            },
+            "type": "array",
+            "title": "Conversations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fetched_at",
+          "user_count",
+          "message_count",
+          "from_user_count",
+          "conversations"
+        ],
+        "title": "ArchiveOut"
+      },
+      "Body_create_import_api_v1_imports_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "Các file .xlsx/.xlsm"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_create_import_api_v1_imports_post"
+      },
+      "ChangeOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "old_quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Quantity"
+          },
+          "new_quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Quantity"
+          },
+          "difference": {
+            "type": "number",
+            "title": "Difference"
+          },
+          "excel_row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excel Row"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "detected_at",
+          "file_name",
+          "day",
+          "employee_code",
+          "employee_name",
+          "line",
+          "unit",
+          "old_quantity",
+          "new_quantity",
+          "difference",
+          "excel_row"
+        ],
+        "title": "ChangeOut"
+      },
+      "ColumnOptionOut": {
+        "properties": {
+          "column": {
+            "type": "integer",
+            "title": "Column",
+            "description": "Chỉ số cột, bắt đầu từ 0 (A = 0)."
+          },
+          "letter": {
+            "type": "string",
+            "title": "Letter"
+          },
+          "header": {
+            "type": "string",
+            "title": "Header"
+          },
+          "sample": {
+            "type": "string",
+            "title": "Sample"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column",
+          "letter",
+          "header",
+          "sample"
+        ],
+        "title": "ColumnOptionOut"
+      },
+      "ConversationOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "truncated",
+          "messages"
+        ],
+        "title": "ConversationOut"
+      },
+      "DayOut": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "employee_count": {
+            "type": "integer",
+            "title": "Employee Count"
+          },
+          "transferred_count": {
+            "type": "integer",
+            "title": "Transferred Count"
+          },
+          "sent_count": {
+            "type": "integer",
+            "title": "Sent Count"
+          },
+          "employees": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeOut"
+            },
+            "type": "array",
+            "title": "Employees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "employee_count",
+          "transferred_count",
+          "sent_count",
+          "employees"
+        ],
+        "title": "DayOut"
+      },
+      "DepartmentPreview": {
+        "properties": {
+          "department": {
+            "type": "string",
+            "title": "Department"
+          },
+          "employee_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Employee Codes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "department",
+          "employee_codes"
+        ],
+        "title": "DepartmentPreview"
+      },
+      "EmployeeOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/OutputLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "departments_in_period": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Departments In Period"
+          },
+          "transferred": {
+            "type": "boolean",
+            "title": "Transferred"
+          },
+          "zalo": {
+            "$ref": "#/components/schemas/ZaloStatus"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeOut"
+            },
+            "type": "array",
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "lines",
+          "departments_in_period",
+          "transferred",
+          "zalo",
+          "changes"
+        ],
+        "title": "EmployeeOut"
+      },
+      "FieldMatchOut": {
+        "properties": {
+          "field_key": {
+            "type": "string",
+            "title": "Field Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "ambiguous",
+              "missing"
+            ],
+            "title": "Status"
+          },
+          "detected_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Column"
+          },
+          "candidates": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "chosen_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen Column"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_key",
+          "label",
+          "required",
+          "status",
+          "detected_column",
+          "candidates",
+          "chosen_column"
+        ],
+        "title": "FieldMatchOut"
+      },
+      "FileDetail": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileStatus"
+          },
+          "status_text": {
+            "type": "string",
+            "title": "Status Text"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "template_label": {
+            "type": "string",
+            "title": "Template Label"
+          },
+          "sheet": {
+            "type": "string",
+            "title": "Sheet"
+          },
+          "rows_read": {
+            "type": "integer",
+            "title": "Rows Read"
+          },
+          "rejected_rows": {
+            "type": "integer",
+            "title": "Rejected Rows"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "excluded_because": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Because"
+          },
+          "template_suggested": {
+            "type": "boolean",
+            "title": "Template Suggested"
+          },
+          "sheets": {
+            "items": {
+              "$ref": "#/components/schemas/SheetOut"
+            },
+            "type": "array",
+            "title": "Sheets"
+          },
+          "sheet_found": {
+            "type": "boolean",
+            "title": "Sheet Found"
+          },
+          "start_row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Row"
+          },
+          "start_row_detected": {
+            "type": "boolean",
+            "title": "Start Row Detected"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldMatchOut"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnOptionOut"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "extra_columns": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Extra Columns"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/TotalOut"
+            },
+            "type": "array",
+            "title": "Totals"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedRowOut"
+            },
+            "type": "array",
+            "title": "Rejected"
+          },
+          "blank_rows": {
+            "type": "integer",
+            "title": "Blank Rows"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "repeated_rows": {
+            "type": "integer",
+            "title": "Repeated Rows"
+          },
+          "groups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Groups",
+            "description": "Tổng theo ngày (và theo nhóm của loại báo cáo) như trong file."
+          },
+          "preview_rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Preview Rows",
+            "description": "Tối đa 200 dòng đầu đã đọc, khóa là tên cột hiển thị."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "name",
+          "status",
+          "status_text",
+          "template_key",
+          "template_label",
+          "sheet",
+          "rows_read",
+          "rejected_rows",
+          "warnings",
+          "excluded_because",
+          "template_suggested",
+          "sheets",
+          "sheet_found",
+          "start_row",
+          "start_row_detected",
+          "fields",
+          "columns",
+          "extra_columns",
+          "totals",
+          "rejected",
+          "blank_rows",
+          "total_rows",
+          "repeated_rows",
+          "groups",
+          "preview_rows"
+        ],
+        "title": "FileDetail"
+      },
+      "FileStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "check",
+          "excluded"
+        ],
+        "title": "FileStatus"
+      },
+      "FileSummary": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileStatus"
+          },
+          "status_text": {
+            "type": "string",
+            "title": "Status Text"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "template_label": {
+            "type": "string",
+            "title": "Template Label"
+          },
+          "sheet": {
+            "type": "string",
+            "title": "Sheet"
+          },
+          "rows_read": {
+            "type": "integer",
+            "title": "Rows Read"
+          },
+          "rejected_rows": {
+            "type": "integer",
+            "title": "Rejected Rows"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "excluded_because": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Because"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "name",
+          "status",
+          "status_text",
+          "template_key",
+          "template_label",
+          "sheet",
+          "rows_read",
+          "rejected_rows",
+          "warnings",
+          "excluded_because"
+        ],
+        "title": "FileSummary"
+      },
+      "ForgetOut": {
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "title": "ForgetOut"
+      },
+      "FreeWindowOut": {
+        "properties": {
+          "messages_loaded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Messages Loaded At"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveUserOut"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messages_loaded_at",
+          "users"
+        ],
+        "title": "FreeWindowOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HandledIn": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "HandledIn"
+      },
+      "ImageOut": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Đường dẫn tải ảnh PNG (tương đối với gốc API)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "caption",
+          "url"
+        ],
+        "title": "ImageOut"
+      },
+      "ImageQuota": {
+        "properties": {
+          "used_this_month": {
+            "type": "integer",
+            "title": "Used This Month"
+          },
+          "monthly_limit": {
+            "type": "integer",
+            "title": "Monthly Limit"
+          },
+          "needed": {
+            "type": "integer",
+            "title": "Needed"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used_this_month",
+          "monthly_limit",
+          "needed",
+          "problem"
+        ],
+        "title": "ImageQuota"
+      },
+      "ImagesOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOut"
+            },
+            "type": "array",
+            "title": "Images"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "images"
+        ],
+        "title": "ImagesOut"
+      },
+      "ImportOut": {
+        "properties": {
+          "import_id": {
+            "type": "string",
+            "title": "Import Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_after_minutes": {
+            "type": "integer",
+            "title": "Expires After Minutes"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileSummary"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedFileOut"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "days": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "changed_rows": {
+            "type": "integer",
+            "title": "Changed Rows",
+            "description": "Số dòng sản lượng khác lần tải trước, phát hiện ở lần đọc gần nhất."
+          },
+          "edited_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Edited Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "import_id",
+          "created_at",
+          "expires_after_minutes",
+          "files",
+          "skipped",
+          "days",
+          "changed_rows",
+          "edited_files"
+        ],
+        "title": "ImportOut"
+      },
+      "IssueOut": {
+        "properties": {
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "title",
+          "detail",
+          "rows"
+        ],
+        "title": "IssueOut"
+      },
+      "IssuesOut": {
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          },
+          "warnings": {
+            "type": "integer",
+            "title": "Warnings"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueOut"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "errors",
+          "warnings",
+          "issues"
+        ],
+        "title": "IssuesOut"
+      },
+      "LinkChangesOut": {
+        "properties": {
+          "saved": {
+            "type": "integer",
+            "title": "Saved"
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "removed"
+        ],
+        "title": "LinkChangesOut"
+      },
+      "LinkIn": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name",
+            "default": ""
+          },
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id",
+            "description": "Chuỗi chữ số; để trống là gỡ nối."
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "zalo_user_id"
+        ],
+        "title": "LinkIn"
+      },
+      "LinkOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "zalo_user_id"
+        ],
+        "title": "LinkOut"
+      },
+      "LinkRowOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id"
+          },
+          "departments": {
+            "type": "string",
+            "title": "Departments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "zalo_user_id",
+          "departments"
+        ],
+        "title": "LinkRowOut"
+      },
+      "LinkUpdate": {
+        "properties": {
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "zalo_user_id"
+        ],
+        "title": "LinkUpdate"
+      },
+      "LinksIn": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LinkIn"
+            },
+            "type": "array",
+            "title": "Rows",
+            "description": "Cả bảng: mã nào đang nối mà không có trong bảng, hoặc để trống zalo_user_id, sẽ bị gỡ."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "LinksIn"
+      },
+      "LinksOut": {
+        "properties": {
+          "linked": {
+            "type": "integer",
+            "title": "Linked"
+          },
+          "not_linked": {
+            "type": "integer",
+            "title": "Not Linked"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LinkRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "linked",
+          "not_linked",
+          "rows"
+        ],
+        "title": "LinksOut"
+      },
+      "MessageOut": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "from_user",
+              "from_oa"
+            ],
+            "title": "Direction"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sent At"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "attachment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "direction",
+          "sent_at",
+          "type",
+          "text",
+          "attachment"
+        ],
+        "title": "MessageOut"
+      },
+      "MessagesOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "messages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "Đúng các tin dạng chữ sẽ gửi (có emoji), theo thứ tự."
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "messages"
+        ],
+        "title": "MessagesOut"
+      },
+      "OutputLineOut": {
+        "properties": {
+          "department": {
+            "type": "string",
+            "title": "Department"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "process": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Dòng tóm tắt như cột “Sản lượng trong ngày” trên web."
+          }
+        },
+        "type": "object",
+        "required": [
+          "department",
+          "role",
+          "process",
+          "quantity",
+          "unit",
+          "text"
+        ],
+        "title": "OutputLineOut"
+      },
+      "ProposalOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          },
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id"
+          },
+          "zalo_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zalo Display Name"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sent At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "status_text": {
+            "type": "string",
+            "title": "Status Text"
+          },
+          "replaced": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced"
+          },
+          "selected_by_default": {
+            "type": "boolean",
+            "title": "Selected By Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "zalo_user_id",
+          "zalo_display_name",
+          "message",
+          "sent_at",
+          "status",
+          "status_text",
+          "replaced",
+          "selected_by_default"
+        ],
+        "title": "ProposalOut"
+      },
+      "ProposalStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "unchanged",
+          "replaces_account",
+          "moves_account",
+          "claimed_by_several",
+          "not_in_list",
+          "no_list"
+        ],
+        "title": "ProposalStatus"
+      },
+      "ProposalsOut": {
+        "properties": {
+          "messages_loaded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Messages Loaded At"
+          },
+          "texted_codes": {
+            "type": "integer",
+            "title": "Texted Codes"
+          },
+          "already_linked": {
+            "type": "integer",
+            "title": "Already Linked"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "type": "array",
+            "title": "Proposals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messages_loaded_at",
+          "texted_codes",
+          "already_linked",
+          "proposals"
+        ],
+        "title": "ProposalsOut"
+      },
+      "ReadSettingsIn": {
+        "properties": {
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key",
+            "description": "Bỏ trống để tự nhận theo tên file."
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet",
+            "description": "Bỏ trống để tự tìm sheet có đủ cột."
+          },
+          "start_row": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Row",
+            "description": "Dòng bắt đầu dữ liệu (đánh số như Excel)."
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping",
+            "description": "field_key → chỉ số cột (A = 0). Bỏ trống để dùng cột tự nhận; trường không có trong mapping sẽ không được lấy."
+          },
+          "extra_columns": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Extra Columns",
+            "description": "Cột lấy thêm chỉ để xem."
+          }
+        },
+        "type": "object",
+        "title": "ReadSettingsIn"
+      },
+      "RecipientPlanOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "zalo_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zalo User Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RecipientState"
+          },
+          "state_text": {
+            "type": "string",
+            "title": "State Text"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "paid",
+                  "needs_interaction"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "last_interaction_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Interaction At"
+          },
+          "parts": {
+            "type": "integer",
+            "title": "Parts"
+          },
+          "pending_parts": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Pending Parts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "zalo_user_id",
+          "state",
+          "state_text",
+          "window",
+          "last_interaction_at",
+          "parts",
+          "pending_parts"
+        ],
+        "title": "RecipientPlanOut"
+      },
+      "RecipientState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "not_linked",
+          "no_interaction",
+          "needs_interaction",
+          "already_sent",
+          "unknown_before"
+        ],
+        "title": "RecipientState"
+      },
+      "RefreshOut": {
+        "properties": {
+          "refreshed": {
+            "type": "boolean",
+            "title": "Refreshed"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TokenStatusOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refreshed",
+          "status"
+        ],
+        "title": "RefreshOut"
+      },
+      "RejectedRowOut": {
+        "properties": {
+          "row": {
+            "type": "integer",
+            "title": "Row"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row",
+          "reason"
+        ],
+        "title": "RejectedRowOut"
+      },
+      "ScanIn": {
+        "properties": {
+          "extra_user_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Extra User Ids",
+            "description": "User id Zalo cần lấy thêm (người nhắn đã lâu có thể không có trong danh sách gần đây)."
+          },
+          "only_extra": {
+            "type": "boolean",
+            "title": "Only Extra",
+            "description": "Chỉ tải các user id đã nêu.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ScanIn"
+      },
+      "SendOutcome": {
+        "type": "string",
+        "enum": [
+          "sent",
+          "failed",
+          "unknown",
+          "stopped"
+        ],
+        "title": "SendOutcome"
+      },
+      "SendPlanOut": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "style": {
+            "$ref": "#/components/schemas/SendStyle"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientPlanOut"
+            },
+            "type": "array",
+            "title": "Recipients"
+          },
+          "ready_count": {
+            "type": "integer",
+            "title": "Ready Count"
+          },
+          "parts_to_send": {
+            "type": "integer",
+            "title": "Parts To Send"
+          },
+          "paid_count": {
+            "type": "integer",
+            "title": "Paid Count",
+            "description": "Người quá 48 giờ: Zalo có thể tính phí."
+          },
+          "unknown_before_count": {
+            "type": "integer",
+            "title": "Unknown Before Count"
+          },
+          "token_ready": {
+            "type": "boolean",
+            "title": "Token Ready"
+          },
+          "image_quota": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageQuota"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmation": {
+            "type": "string",
+            "title": "Confirmation",
+            "description": "Gửi lại giá trị này ở POST .../sends để xác nhận đúng danh sách và nội dung vừa xem. Đổi người chọn hay nội dung thì phải lấy kế hoạch mới."
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "style",
+          "recipients",
+          "ready_count",
+          "parts_to_send",
+          "paid_count",
+          "unknown_before_count",
+          "token_ready",
+          "image_quota",
+          "confirmation"
+        ],
+        "title": "SendPlanOut"
+      },
+      "SendRecordOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "zalo_user_id": {
+            "type": "string",
+            "title": "Zalo User Id"
+          },
+          "style": {
+            "type": "string",
+            "title": "Style"
+          },
+          "part": {
+            "type": "integer",
+            "title": "Part"
+          },
+          "parts": {
+            "type": "integer",
+            "title": "Parts"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "zalo_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zalo Message Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "zalo_user_id",
+          "style",
+          "part",
+          "parts",
+          "status",
+          "zalo_message_id",
+          "updated_at"
+        ],
+        "title": "SendRecordOut"
+      },
+      "SendRequest": {
+        "properties": {
+          "style": {
+            "$ref": "#/components/schemas/SendStyle",
+            "default": "text"
+          },
+          "employee_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Employee Codes",
+            "description": "Mã nhân viên được chọn gửi. Người không có trong ngày bị bỏ qua."
+          },
+          "resend_unknown": {
+            "type": "boolean",
+            "title": "Resend Unknown",
+            "description": "Gửi lại cả người mà lần trước không rõ đã gửi chưa (có thể nhận trùng).",
+            "default": false
+          },
+          "confirmation": {
+            "type": "string",
+            "title": "Confirmation",
+            "description": "Giá trị `confirmation` của send-plan."
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_codes",
+          "confirmation"
+        ],
+        "title": "SendRequest"
+      },
+      "SendResultOut": {
+        "properties": {
+          "employee_code": {
+            "type": "string",
+            "title": "Employee Code"
+          },
+          "employee_name": {
+            "type": "string",
+            "title": "Employee Name"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SendOutcome"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Message Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_code",
+          "employee_name",
+          "outcome",
+          "detail",
+          "error_code",
+          "message_ids"
+        ],
+        "title": "SendResultOut"
+      },
+      "SendResultsOut": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "style": {
+            "$ref": "#/components/schemas/SendStyle"
+          },
+          "sent": {
+            "type": "integer",
+            "title": "Sent"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown"
+          },
+          "stopped": {
+            "type": "integer",
+            "title": "Stopped"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SendResultOut"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "style",
+          "sent",
+          "failed",
+          "unknown",
+          "stopped",
+          "results"
+        ],
+        "title": "SendResultsOut"
+      },
+      "SendSelection": {
+        "properties": {
+          "style": {
+            "$ref": "#/components/schemas/SendStyle",
+            "default": "text"
+          },
+          "employee_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Employee Codes",
+            "description": "Mã nhân viên được chọn gửi. Người không có trong ngày bị bỏ qua."
+          },
+          "resend_unknown": {
+            "type": "boolean",
+            "title": "Resend Unknown",
+            "description": "Gửi lại cả người mà lần trước không rõ đã gửi chưa (có thể nhận trùng).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "employee_codes"
+        ],
+        "title": "SendSelection"
+      },
+      "SendStyle": {
+        "type": "string",
+        "enum": [
+          "text",
+          "image"
+        ],
+        "title": "SendStyle"
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "error",
+          "warning",
+          "info"
+        ],
+        "title": "Severity"
+      },
+      "SheetOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "hidden"
+        ],
+        "title": "SheetOut"
+      },
+      "SkippedFileOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "reason"
+        ],
+        "title": "SkippedFileOut"
+      },
+      "Template": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "department": {
+            "type": "string",
+            "title": "Department"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateField"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "department",
+          "unit",
+          "fields"
+        ],
+        "title": "Template"
+      },
+      "TemplateField": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "required"
+        ],
+        "title": "TemplateField"
+      },
+      "TestMessageIn": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "title": "User Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Phải là true: tin đã gửi không thu hồi được."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "text",
+          "confirm"
+        ],
+        "title": "TestMessageIn"
+      },
+      "TestMessageOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "audit_failed": {
+            "type": "boolean",
+            "title": "Audit Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message_id",
+          "error_code",
+          "detail",
+          "audit_failed"
+        ],
+        "title": "TestMessageOut"
+      },
+      "TokenIn": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Access Token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Refresh Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "TokenIn"
+      },
+      "TokenStatusOut": {
+        "properties": {
+          "stored": {
+            "type": "boolean",
+            "title": "Stored"
+          },
+          "missing_settings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Settings"
+          },
+          "access_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Expires At"
+          },
+          "access_expiry_known": {
+            "type": "boolean",
+            "title": "Access Expiry Known"
+          },
+          "refresh_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Expires At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "needs_reauthorization": {
+            "type": "boolean",
+            "title": "Needs Reauthorization"
+          },
+          "usable": {
+            "type": "boolean",
+            "title": "Usable",
+            "description": "Có access token để gọi Zalo (đã lưu hoặc trong .env)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored",
+          "missing_settings",
+          "access_expires_at",
+          "access_expiry_known",
+          "refresh_expires_at",
+          "updated_at",
+          "last_error",
+          "needs_reauthorization",
+          "usable"
+        ],
+        "title": "TokenStatusOut"
+      },
+      "TotalOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "counted": {
+            "type": "number",
+            "title": "Counted"
+          },
+          "all_rows": {
+            "type": "number",
+            "title": "All Rows"
+          },
+          "stated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stated"
+          },
+          "matches_stated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matches Stated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "counted",
+          "all_rows",
+          "stated",
+          "matches_stated"
+        ],
+        "title": "TotalOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ZaloStatus": {
+        "properties": {
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          },
+          "zalo_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zalo User Id"
+          },
+          "text_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sent": {
+            "type": "boolean",
+            "title": "Sent",
+            "description": "Đã nhận đúng nội dung hiện tại (dạng chữ hoặc ảnh)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "linked",
+          "zalo_user_id",
+          "text_state",
+          "image_state",
+          "sent"
+        ],
+        "title": "ZaloStatus"
+      }
+    }
+  }
+}

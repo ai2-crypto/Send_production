@@ -9,6 +9,7 @@
 *.db-*
 data
 tests
+docs
 **/.claude
 **/__pycache__
 *.py[oc]
